@@ -21,10 +21,10 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
 - [x] **P1.2 — repalette to cream/forest.** Swap the existing `:root` values;
       no new token system needed.
 - [x] **P1.3 — tactile pad.** Press depth, movement, optional haptics.
-- [~] **P1.4 — layout templates.** Gamepad / dual-stick / D-pad presets. This is
+- [x] **P1.4 — layout templates.** Gamepad / dual-stick / D-pad presets. This is
       the one good product idea in the reference image; the brief omits it.
 
-- [ ] **P1.4b — a layout declares its orientation.** Contract:
+- [x] **P1.4b — a layout declares its orientation.** Contract:
       `docs/contracts/layout-orientation.md`. Positions are fractions of a pad
       that is ~339x672 portrait and ~776x289 landscape, so one set of numbers
       cannot serve both. Templates say which they were designed for.
@@ -65,6 +65,14 @@ Each is defensible someday, none blocks a player or a developer today.
   directory argument fails: `test/package.json` makes node load it as a module.
 
 ## Agent notes
+
+- **Grep for a whitelist before believing a field arrives.** `normaliseControls`
+  in `controller.js` rebuilds each control from named properties, so a new
+  control-spec field is silently dropped unless it is added there. This ate
+  `size`, then `accent`, with a green suite both times. `boundary.test.js`
+  guards the crossing now; extend it when adding a field.
+- **Accent values** are the four in `controls.js` ACCENTS; anything else is
+  ignored by design, so a typo shows as a default sage button, not an error.
 
 - **A builder with no browser cannot finish a visual task.** The P1 pass landed
   three defects that only rendering showed: the playing background never
