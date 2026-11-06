@@ -27,19 +27,32 @@ export const MessageType = Object.freeze({
 /** The three things tilt can give. A game maps these onto its own axis names. */
 export const SIGNALS = Object.freeze(['yaw', 'pitch', 'roll']);
 
+/** Which way up the phone should be held for a layout. 'any' asks for nothing. */
+export const ORIENTATIONS = Object.freeze(['landscape', 'portrait', 'any']);
+
+/**
+ * Anything unrecognised, or absent (an older game), means 'any': a layout that
+ * cannot say how it wants to be held does not get to nag the player.
+ */
+export const normaliseOrientation = (value) => (ORIENTATIONS.includes(value) ? value : 'any');
+
 /**
  * @param {object} layout
  * @param {string} layout.mount      holding pose
  * @param {boolean} layout.usesTilt  false lets the phone skip calibration entirely
  * @param {Array<{id:string,type:'button'|'stick'|'dpad',label?:string,side?:string}>} layout.controls
+ * @param {'landscape'|'portrait'|'any'} [layout.orientation] how the controls were designed to be held
  * @param {boolean} [layout.debug]   show the raw angle readout on the phone
  * @param {boolean} [layout.allowLayoutEdit] let the player rearrange the controls
  */
-export const layout = ({ mount, usesTilt, controls, debug = false, allowLayoutEdit = true }) => ({
+export const layout = ({
+  mount, usesTilt, controls, orientation, debug = false, allowLayoutEdit = true
+}) => ({
   type: MessageType.LAYOUT,
   mount,
   usesTilt,
   controls,
+  orientation: normaliseOrientation(orientation),
   debug,
   allowLayoutEdit
 });

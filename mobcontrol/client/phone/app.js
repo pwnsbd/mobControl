@@ -49,6 +49,7 @@ export class ControllerApp {
   #previousAttitude = null;
   #resumeStage = null;
   #releasing = false;
+  #orientation = 'any';
 
   constructor({
     room, transport, view, calibrator, gripTeacher, wakeLock,
@@ -73,6 +74,7 @@ export class ControllerApp {
     this.view.onEditHandle(() => this.view.setEditing(true));
     this.view.onEditDone(() => this.view.setEditing(false));
     this.view.onEditReset(() => this.view.resetLayout());
+    this.view.onOrientation(() => this.#reconcileOrientation());
 
     if (!this.room) {
       this.#setStage('blocked');
@@ -106,8 +108,11 @@ export class ControllerApp {
   #onClose() {
     this.#releaseControls();
     if (this.#stage !== 'interrupted') {
-      this.#resumeStage = this.#stage;
-      if (this.#stage === 'playing') {
+      // 'rotate' is playing with the phone held the wrong way; coming back, the
+      // phone may be held either way, so resume as 'playing' and let it decide.
+      const inPlay = this.#stage === 'playing' || this.#stage === 'rotate';
+      this.#resumeStage = inPlay ? 'playing' : this.#stage;
+      if (inPlay) {
         this.#setStage('interrupted');
         this.view.say(SAY.interrupted);
       }
@@ -118,8 +123,12 @@ export class ControllerApp {
   #onOpen() {
     this.view.status(SAY.waiting);
     if (this.#stage !== 'interrupted') return;
-    this.#setStage(this.#resumeStage);
-    this.view.say(this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
+    if (this.#resumeStage === 'playing') {
+      this.#enterPlay({ hint: false });
+    } else {
+      this.#setStage(this.#resumeStage);
+      this.view.say(this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
+    }
     this.#sendFrame({ force: true });
   }
 
@@ -140,6 +149,7 @@ export class ControllerApp {
 
   #applyLayout(layout) {
     this.#layout = layout;
+    this.#orientation = protocol.normaliseOrientation(layout.orientation);
     this.calibrator.mount = layout.mount;
     this.view.debug = layout.debug;
     this.view.usesTilt = layout.usesTilt;
@@ -152,16 +162,50 @@ export class ControllerApp {
     // A game with no tilt needs no sensors: no permission prompt, no
     // calibration. Scan, and play.
     if (!layout.usesTilt) {
-      this.#setStage('playing');
-      this.view.say(SAY.buttonsOnly);
-      this.view.hintEditing();
+      this.#enterPlay();
       this.#sendFrame({ force: true });
       return;
     }
     if (this.#stage === 'connecting') {
       this.#setStage('ready');
       this.view.say(SAY.ready);
+    } else if (this.#stage === 'rotate') {
+      this.#reconcileOrientation();           // the new layout may not mind how it is held
     }
+  }
+
+  // --- which way up the phone is held --------------------------------------
+  //
+  // 'rotate' is a way of playing, not a place to start from: it is entered only
+  // from play (never while connecting, blocked, or setting up) and it leaves
+  // by itself when the phone is turned.
+
+  #needsTurn() {
+    if (this.#orientation === 'any') return false;
+    return this.#orientation !== (this.view.isLandscape ? 'landscape' : 'portrait');
+  }
+
+  /** Enter play, or the turn screen if the phone is held the wrong way. */
+  #enterPlay({ hint = true } = {}) {
+    if (this.#needsTurn()) {
+      this.#releaseControls();
+      this.view.showTurn(this.#orientation);
+      this.#setStage('rotate');
+      return;
+    }
+    this.#setStage('playing');
+    this.view.say(this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
+    if (hint) this.view.hintEditing();
+  }
+
+  /** The phone was turned, or the layout changed. Only play can be affected. */
+  #reconcileOrientation() {
+    const stage = this.#stage;
+    if (stage !== 'playing' && stage !== 'rotate') return;   // interrupted wins; the rest are not play
+    if (this.#needsTurn() === (stage === 'rotate')) return;
+    this.#enterPlay();
+    // The game hears a neutral frame either way: nothing may stay held across the switch.
+    this.#sendFrame({ force: true });
   }
 
   // --- setup -------------------------------------------------------------
@@ -199,9 +243,7 @@ export class ControllerApp {
 
   #beginPlaying(reference = this.#latestAttitude) {
     if (!this.#capture(reference)) return;
-    this.#setStage('playing');
-    this.view.say(SAY.playing);
-    this.view.hintEditing();
+    this.#enterPlay();
   }
 
   #recentre() {
@@ -319,7 +361,8 @@ export class ControllerApp {
     this.view.stage = stage;
     // Someone tilting a phone is using it, but the screen does not know that,
     // so it would dim, lock, and drop the socket mid-game.
-    if (stage === 'playing') this.wakeLock?.acquire();
+    // The turn screen is still play: the player is holding the phone, not leaving.
+    if (stage === 'playing' || stage === 'rotate') this.wakeLock?.acquire();
     else this.wakeLock?.release();
   }
 
