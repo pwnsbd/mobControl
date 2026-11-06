@@ -1,0 +1,16 @@
+{
+  "name": "mobcontrol",
+  "version": "0.1.0",
+  "description": "Turn any phone into a motion-and-touch controller for a web game. Scan a QR code and play.",
+  "keywords": ["gamepad", "controller", "deviceorientation", "websocket", "qr", "phone"],
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": ["index.js", "src/", "client/"],
+  "scripts": {
+    "test": "node --test test/attitude.test.js test/grip.test.js test/pad-layout.test.js test/controls.test.js"
+  },
+  "peerDependencies": {
+    "ws": "^8.0.0"
+  }
+}

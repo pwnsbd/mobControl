@@ -1,0 +1,4 @@
+{
+  "//": "Marks this tree as ES modules so Node can import the same files the browser does. Browsers ignore it.",
+  "type": "module"
+}

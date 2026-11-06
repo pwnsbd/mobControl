@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Controller</title>
+<link rel="stylesheet" href="./phone/controller.css">
+</head>
+<body>
+<!-- Markup only. Every element the code touches is reached through view.js. -->
+<main>
+  <header>
+    <span id="room" class="pill"></span>
+    <button id="edit-handle" class="handle" hidden
+            aria-label="Rearrange buttons">&#8942;&#8942;</button>
+    <button id="recentre" class="link" hidden>Recentre</button>
+  </header>
+
+  <div id="edit-bar" hidden>
+    <span>Drag to move &middot; tap to resize</span>
+    <button id="edit-reset" class="link">Reset</button>
+    <button id="edit-done" class="chip">Done</button>
+  </div>
+
+  <!-- getting ready -->
+  <section id="setup" class="card">
+    <svg id="pose" viewBox="0 0 170 104" aria-hidden="true"></svg>
+    <p id="message">Connecting&hellip;</p>
+    <button id="start" class="primary" disabled>Start</button>
+    <button id="teach" class="link" hidden>I hold it differently</button>
+  </section>
+
+  <!-- learning the grip -->
+  <section id="teaching" class="card" hidden>
+    <div class="dial">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="dial-track" cx="60" cy="60" r="52"/>
+        <circle id="dial-fill" class="dial-fill" cx="60" cy="60" r="52"/>
+      </svg>
+      <span id="dial-value">0&deg;</span>
+    </div>
+    <p id="teach-text"></p>
+    <button id="teach-cancel" class="link">Cancel</button>
+  </section>
+
+  <!-- playing -->
+  <div id="tilt" hidden><i id="tilt-dot"></i></div>
+  <div id="pad" hidden></div>
+
+  <!-- diagnostics, only when the game asks -->
+  <div id="readout" hidden>
+    <div id="axes">
+      <div class="axis"><b id="yaw">&mdash;</b><span>YAW</span></div>
+      <div class="axis"><b id="pitch">&mdash;</b><span>PITCH</span></div>
+      <div class="axis"><b id="roll">&mdash;</b><span>ROLL</span></div>
+    </div>
+    <div id="shake-track"><i id="shake"></i></div>
+  </div>
+
+  <p id="status"></p>
+</main>
+
+<script type="module" src="./phone/main.js"></script>
+</body>
+</html>

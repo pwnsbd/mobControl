@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cube Run</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #10131f; overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+
+  #hud { position: fixed; top: 14px; left: 16px; color: #fff; font-size: 14px;
+    font-family: ui-monospace, Menlo, monospace; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  #hint { position: fixed; bottom: 14px; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,.55); font-size: 13px; }
+  #banner { position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+    padding: 12px 22px; border-radius: 999px; font-size: 15px; color: #f5f0ea;
+    background: rgba(20,18,26,.88); border: 1px solid rgba(255,182,77,.35);
+    box-shadow: 0 16px 40px -20px rgba(0,0,0,.9); }
+  #banner[hidden] { display: none; }
+
+  #pairing { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px;
+    background: radial-gradient(125% 85% at 50% 0%, rgba(42,33,51,.97), rgba(16,14,21,.98));
+    color: #f5f0ea; text-align: center; }
+  #pairing[hidden] { display: none; }
+  #pairing > div { display: flex; flex-direction: column; align-items: center; gap: 18px;
+    padding: 34px 30px; border-radius: 28px; background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.09); }
+  #pairing h1 { margin: 0; font-size: 31px; letter-spacing: -.01em; font-weight: 650; }
+  #pairing p { margin: 0; max-width: 33ch; line-height: 1.55; color: #9a8f9f; font-size: 15px; }
+  #pairing strong { color: #f5f0ea; font-weight: 600; }
+  #qr { background: #fff; padding: 14px; border-radius: 16px; line-height: 0; min-height: 40px;
+    box-shadow: 0 20px 44px -22px rgba(0,0,0,.9); }
+  #code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; letter-spacing: .34em;
+    color: #ffb64d; padding: 7px 10px 7px 16px; border-radius: 999px;
+    border: 1px solid rgba(255,182,77,.28); background: rgba(255,182,77,.07); }
+  #pairing small { color: rgba(154,143,159,.7); font-size: 12px; word-break: break-all; }
+  #warning { max-width: 34ch; font-size: 13px; line-height: 1.5; color: #ffd0a3;
+    background: rgba(255,122,89,.12); border: 1px solid rgba(255,122,89,.35);
+    border-radius: 14px; padding: 11px 14px; }
+  #warning[hidden] { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="hint"></div>
+<div id="banner" hidden></div>
+
+<div id="pairing">
+  <div>
+    <h1>Cube Run</h1>
+    <p>Scan with your phone, hold it sideways and flat &mdash; screen up, top edge to your
+       <strong>left</strong> &mdash; and tap <strong>Calibrate</strong>.
+       Tilt to move or use the <strong>D-pad</strong>, and tap <strong>JUMP</strong>.</p>
+    <div id="qr"></div>
+    <div id="code"></div>
+    <p id="warning" hidden></p>
+    <small id="link"></small>
+    <small>or just play with &larr; &rarr; and Space</small>
+  </div>
+</div>
+
+<script type="module">
+import { PhoneController } from '/__phone/controller.js';
+
+// ===========================================================================
+// The controller. This is the entire integration: declare the layout, then
+// read pad.axis.x and pad.button.jump like any gamepad.
+// ===========================================================================
+const pad = new PhoneController({
+  mount: 'landscape-left',                    // held sideways, screen up, head to the left
+  axes: { x: 'roll' },                        // tilt the near edge down to go left/right
+  controls: [
+    { type: 'dpad', id: 'move' },             // ...or use the D-pad instead
+    { type: 'button', id: 'jump', label: 'JUMP' }
+  ],
+  deadzone: 4,
+  range: 26                                   // 26 degrees of tilt = full speed
+});
+
+const pairing = document.getElementById('pairing');
+document.getElementById('code').textContent = pad.room;
+document.getElementById('link').textContent = pad.pairUrl;
+pad.mountQR(document.getElementById('qr'), 200);
+
+// The two ways pairing quietly fails in development, said out loud.
+if (!pad.reachability.ok) {
+  const warning = document.getElementById('warning');
+  warning.textContent = pad.reachability.message;
+  warning.hidden = false;
+}
+
+// ---------------------------------------------------------------------------
+// Pausing. mobControl reports what happened; what it means is this game's call.
+// Losing the phone for a moment should not dump the player back to a QR code,
+// and coming back should not drop them mid-fall — so resuming is deliberate.
+// ---------------------------------------------------------------------------
+const banner = document.getElementById('banner');
+let paused = false;
+let showPairingAt = null;
+
+function pauseWith(text) {
+  paused = true;
+  banner.textContent = text;
+  banner.hidden = false;
+}
+function offerResume() {
+  if (paused) banner.textContent = 'Press any key or tap JUMP to resume';
+}
+function resume() {
+  paused = false;
+  banner.hidden = true;
+}
+
+pad.on('pair', () => {
+  clearTimeout(showPairingAt);
+  pairing.hidden = true;
+  offerResume();
+});
+pad.on('unpair', () => {
+  pauseWith('Phone disconnected — reconnecting…');
+  // Only fall back to the QR if it really has gone, not for a blink.
+  showPairingAt = setTimeout(() => { pairing.hidden = false; }, 4000);
+});
+pad.on('suspend', () => pauseWith('Paused — phone screen is off'));
+pad.on('resume', offerResume);
+
+pad.on('press', ({ id }) => {
+  if (paused) return resume();              // the resume tap is not a jump
+  if (id === 'jump') jumpBuffer = JUMP_BUFFER;
+});
+
+// ===========================================================================
+// Input: the phone and the keyboard feed exactly the same three values, so
+// the game below never asks where a press came from.
+// ===========================================================================
+const keys = new Set();
+addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'Space', 'ArrowUp', 'KeyW', 'KeyA', 'KeyD'].includes(e.code)) {
+    e.preventDefault();
+  }
+  if (paused) return resume();              // any key wakes it up, and does nothing else
+  if (!keys.has(e.code) && isJumpKey(e.code)) jumpBuffer = JUMP_BUFFER;
+  keys.add(e.code);
+});
+addEventListener('keyup', (e) => keys.delete(e.code));
+const isJumpKey = (code) => code === 'Space' || code === 'ArrowUp' || code === 'KeyW';
+
+// Three input sources, one number out. The physics never asks which was used.
+function steering() {
+  const left = keys.has('ArrowLeft') || keys.has('KeyA');
+  const right = keys.has('ArrowRight') || keys.has('KeyD');
+  if (left !== right) return right ? 1 : -1;  // keyboard
+  if (pad.stick.move.x) return pad.stick.move.x;   // D-pad, -1 / 0 / 1
+  return pad.axis.x;                          // tilt, -1..1
+}
+const jumpHeld = () =>
+  pad.button.jump || keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW');
+
+// ===========================================================================
+// The level. One screen tall, scrolling right, with two gaps to fall in.
+// ===========================================================================
+const WORLD = { width: 3240, height: 640, deathY: 760 };
+
+const platforms = [
+  { x: 0, y: 560, w: 900, h: 160 },
+  { x: 1040, y: 560, w: 520, h: 160 },
+  { x: 1700, y: 560, w: 1540, h: 160 },
+  { x: 420, y: 452, w: 150, h: 22 },
+  { x: 650, y: 356, w: 150, h: 22 },
+  { x: 1120, y: 434, w: 160, h: 22 },
+  { x: 1352, y: 338, w: 130, h: 22 },
+  { x: 1792, y: 442, w: 150, h: 22 },
+  { x: 2020, y: 348, w: 150, h: 22 },
+  { x: 2268, y: 452, w: 210, h: 22 },
+  { x: 2612, y: 372, w: 170, h: 22 },
+  { x: 2870, y: 462, w: 130, h: 22 }
+];
+
+const START = { x: 60, y: 480 };
+const goal = { x: 3120, y: 448, w: 26, h: 112 };
+
+const coins = [
+  [470, 408], [700, 312], [860, 500], [1180, 390], [1400, 294],
+  [1500, 500], [1850, 398], [2070, 304], [2330, 408], [2400, 408],
+  [2680, 328], [2920, 418], [3040, 500]
+].map(([x, y]) => ({ x, y, taken: false, phase: Math.random() * 6.28 }));
+
+// ===========================================================================
+// Physics
+// ===========================================================================
+const GRAVITY = 2400;
+const MAX_SPEED = 320;
+const ACCEL = 2400;
+const GROUND_FRICTION = 1800;
+const AIR_FRICTION = 500;
+const JUMP_SPEED = 760;
+const JUMP_CUT = 260;        // releasing early clips the rise
+const COYOTE = 0.09;         // still jumpable just after walking off
+const JUMP_BUFFER = 0.12;    // a press just before landing still counts
+const SIZE = 34;
+
+const player = { x: START.x, y: START.y, vx: 0, vy: 0, onGround: false, face: 1 };
+let coyote = 0;
+let jumpBuffer = 0;
+let collected = 0;
+let won = false;
+let deaths = 0;
+let time = 0;
+
+function physics(dt) {
+  const steer = steering();
+
+  // horizontal
+  if (Math.abs(steer) > 0.01) {
+    player.vx += steer * ACCEL * dt;
+    player.face = Math.sign(steer);
+  } else {
+    const friction = (player.onGround ? GROUND_FRICTION : AIR_FRICTION) * dt;
+    player.vx -= Math.sign(player.vx) * Math.min(Math.abs(player.vx), friction);
+  }
+  player.vx = clamp(player.vx, -MAX_SPEED, MAX_SPEED);
+
+  // jumping
+  coyote = player.onGround ? COYOTE : Math.max(0, coyote - dt);
+  jumpBuffer = Math.max(0, jumpBuffer - dt);
+  if (jumpBuffer > 0 && coyote > 0) {
+    player.vy = -JUMP_SPEED;
+    jumpBuffer = 0;
+    coyote = 0;
+    player.onGround = false;
+  }
+  if (!jumpHeld() && player.vy < -JUMP_CUT) player.vy = -JUMP_CUT;
+
+  player.vy = Math.min(player.vy + GRAVITY * dt, 1400);
+
+  // move and resolve, one axis at a time
+  player.x = clamp(player.x + player.vx * dt, 0, WORLD.width - SIZE);
+  resolve('x');
+  player.y += player.vy * dt;
+  player.onGround = false;
+  resolve('y');
+
+  if (player.y > WORLD.deathY) respawn();
+
+  for (const coin of coins) {
+    if (coin.taken) continue;
+    if (Math.abs(coin.x - (player.x + SIZE / 2)) < 24 &&
+        Math.abs(coin.y - (player.y + SIZE / 2)) < 26) {
+      coin.taken = true;
+      collected++;
+    }
+  }
+
+  if (!won && overlaps(goal)) {
+    won = true;
+    pad.message(`Finished in ${time.toFixed(1)}s — ${collected}/${coins.length} coins`);
+  }
+}
+
+function resolve(axis) {
+  for (const p of platforms) {
+    if (!overlaps(p)) continue;
+    if (axis === 'x') {
+      player.x = player.vx > 0 ? p.x - SIZE : p.x + p.w;
+      player.vx = 0;
+    } else {
+      if (player.vy > 0) { player.y = p.y - SIZE; player.onGround = true; }
+      else { player.y = p.y + p.h; }
+      player.vy = 0;
+    }
+  }
+}
+
+const overlaps = (r) =>
+  player.x < r.x + r.w && player.x + SIZE > r.x &&
+  player.y < r.y + r.h && player.y + SIZE > r.y;
+
+function respawn() {
+  deaths++;
+  Object.assign(player, { x: START.x, y: START.y, vx: 0, vy: 0 });
+}
+
+// ===========================================================================
+// Drawing
+// ===========================================================================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+const hint = document.getElementById('hint');
+let W = 0, H = 0, scale = 1, camX = 0;
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  scale = Math.min(W / 960, H / WORLD.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+function draw() {
+  const viewW = W / scale;
+  camX = clamp(player.x + SIZE / 2 - viewW / 2, 0, Math.max(0, WORLD.width - viewW));
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#2b3f7a');
+  sky.addColorStop(0.6, '#6c8ad0');
+  sky.addColorStop(1, '#a9c6ea');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.translate(-camX, (H / scale - WORLD.height) / 2);
+
+  hills(0.3, '#4a6bb0', 470);
+  hills(0.55, '#3b5796', 520);
+
+  for (const p of platforms) {
+    ctx.fillStyle = '#2f4a38';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = '#56a05f';
+    ctx.fillRect(p.x, p.y, p.w, 10);
+  }
+
+  for (const coin of coins) {
+    if (coin.taken) continue;
+    const bob = Math.sin(time * 3 + coin.phase) * 4;
+    ctx.fillStyle = '#ffd95e';
+    ctx.beginPath();
+    ctx.ellipse(coin.x, coin.y + bob, 8, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.fillRect(coin.x - 2, coin.y + bob - 6, 3, 12);
+  }
+
+  // goal flag
+  ctx.fillStyle = '#e8ecf8';
+  ctx.fillRect(goal.x, goal.y, 5, goal.h);
+  ctx.fillStyle = won ? '#7fe3c0' : '#ef6f6f';
+  ctx.beginPath();
+  ctx.moveTo(goal.x + 5, goal.y + 6);
+  ctx.lineTo(goal.x + 48, goal.y + 20);
+  ctx.lineTo(goal.x + 5, goal.y + 34);
+  ctx.closePath();
+  ctx.fill();
+
+  cube();
+  ctx.restore();
+
+  hud.textContent =
+    `${collected}/${coins.length} coins   ${time.toFixed(1)}s   deaths ${deaths}` +
+    (won ? '   — FINISHED!' : '');
+  hint.textContent = pad.connected
+    ? (pad.calibrated ? 'tilt to move · JUMP on the phone' : 'calibrate on the phone')
+    : 'arrow keys + space — or scan the code to use your phone';
+}
+
+function hills(depth, colour, baseY) {
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(camX * depth - 200, WORLD.height);
+  for (let x = -200; x <= 1400; x += 40) {
+    const wx = camX * depth + x;
+    ctx.lineTo(wx, baseY + Math.sin(wx * 0.004) * 48 + Math.sin(wx * 0.011) * 18);
+  }
+  ctx.lineTo(camX * depth + 1400, WORLD.height);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function cube() {
+  const squash = player.onGround ? 1 : 1 + clamp(player.vy / 3000, -0.12, 0.16);
+  const h = SIZE * squash, w = SIZE * (2 - squash);
+  const x = player.x + (SIZE - w) / 2, y = player.y + (SIZE - h);
+
+  ctx.fillStyle = won ? '#7fe3c0' : '#ffd166';
+  ctx.strokeStyle = 'rgba(24,18,8,.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#20160a';
+  const eye = player.face > 0 ? 6 : -6;
+  ctx.fillRect(x + w / 2 - 9 + eye, y + h * 0.34, 4, 6);
+  ctx.fillRect(x + w / 2 + 3 + eye, y + h * 0.34, 4, 6);
+}
+
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// ===========================================================================
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+  if (!won && !paused) { time += dt; physics(dt); }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window.game = { player, pad, coins, respawn, state: () => ({ collected, won, deaths, time }) };
+</script>
+</body>
+</html>

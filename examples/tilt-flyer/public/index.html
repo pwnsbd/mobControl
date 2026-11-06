@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tilt Flyer</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b1020; color: #e8ecf8;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #panel {
+    position: fixed; inset: 0; display: grid; place-items: center; padding: 24px;
+    background: radial-gradient(125% 85% at 50% 0%, rgba(42,33,51,.97), rgba(16,14,21,.98));
+    color: #f5f0ea; text-align: center;
+  }
+  #panel.hidden { display: none; }
+  #panel > div { display: flex; flex-direction: column; align-items: center; gap: 18px;
+    padding: 34px 30px; border-radius: 28px; background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.09); }
+  #panel h1 { margin: 0; font-size: 30px; letter-spacing: -.01em; font-weight: 650; }
+  #panel p { margin: 0; max-width: 34ch; line-height: 1.55; color: #9a8f9f; font-size: 15px; }
+  #panel strong { color: #f5f0ea; font-weight: 600; }
+  #qr { background: #fff; padding: 14px; border-radius: 16px; line-height: 0; min-height: 40px;
+    box-shadow: 0 20px 44px -22px rgba(0,0,0,.9); }
+  #code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; letter-spacing: .34em;
+    color: #ffb64d; padding: 7px 10px 7px 16px; border-radius: 999px;
+    border: 1px solid rgba(255,182,77,.28); background: rgba(255,182,77,.07); }
+  #warning { max-width: 34ch; font-size: 13px; line-height: 1.5; color: #ffd0a3;
+    background: rgba(255,122,89,.12); border: 1px solid rgba(255,122,89,.35);
+    border-radius: 14px; padding: 11px 14px; }
+  #warning[hidden] { display: none; }
+  #status { position: fixed; top: 12px; left: 14px; font-size: 13px;
+    color: #7f90b8; font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="status">connecting&hellip;</div>
+
+<div id="panel">
+  <div>
+    <h1>Tilt Flyer</h1>
+    <p>Scan this with your phone, then tap <strong>Start</strong>. Hold it flat on your palm,
+       screen up, top edge to your <strong>left</strong> &mdash; that edge is the nose.</p>
+    <div id="qr"></div>
+    <div id="code"></div>
+    <p id="warning" hidden></p>
+    <p id="link" style="font-size:12px;color:rgba(154,143,159,.7);word-break:break-all"></p>
+  </div>
+</div>
+
+<script type="module">
+import { PhoneController } from '/__phone/controller.js';
+
+// ---- the controller ------------------------------------------------------
+// Everything about pairing, permissions and sensor maths is in the module.
+// This game only declares how it wants the phone held, then reads numbers.
+const pad = new PhoneController({
+  mount: 'landscape-left',          // top edge = the nose, pointing left
+  axes: { turn: 'yaw', climb: 'pitch', roll: 'roll' },
+  deadzone: 3,                      // degrees of slop ignored
+  range: 40,                        // degrees that count as full deflection
+  debug: true                       // show the angle readout on the phone
+});
+
+const panel = document.getElementById('panel');
+const statusEl = document.getElementById('status');
+document.getElementById('code').textContent = pad.room;
+document.getElementById('link').textContent = pad.pairUrl;
+pad.mountQR(document.getElementById('qr')).catch(() => {});
+
+// The two ways pairing quietly fails in development, said out loud.
+if (!pad.reachability.ok) {
+  const warning = document.getElementById('warning');
+  warning.textContent = pad.reachability.message;
+  warning.hidden = false;
+}
+
+statusEl.textContent = `room ${pad.room} · waiting for phone`;
+let showPanelAt = null;
+pad.on('pair', () => {
+  clearTimeout(showPanelAt);
+  panel.classList.add('hidden');
+  statusEl.textContent = `room ${pad.room} · phone connected`;
+});
+pad.on('unpair', () => {
+  statusEl.textContent = `room ${pad.room} · reconnecting…`;
+  // Only fall back to the QR if the phone really has gone, not for a blink.
+  showPanelAt = setTimeout(() => {
+    panel.classList.remove('hidden');
+    statusEl.textContent = `room ${pad.room} · phone disconnected`;
+  }, 4000);
+});
+pad.on('suspend', () => { statusEl.textContent = `room ${pad.room} · phone asleep`; });
+pad.on('resume', () => { statusEl.textContent = `room ${pad.room} · phone connected`; });
+
+// ---- canvas --------------------------------------------------------------
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- flight model --------------------------------------------------------
+// World axes: x east, z north (the heading-0 direction of travel), y DOWN.
+const FOCAL = 300;        // projection: screen scale = FOCAL / distance ahead
+const NEAR = 30;
+
+const TURN_RATE = 52;     // degrees of heading per second at full deflection
+const CLIMB_ACCEL = 900;  // vertical acceleration at full deflection
+const SLIP_ACCEL = 1000;  // sideways acceleration at full deflection
+const DAMPING = 0.95;     // velocity kept per frame
+const SPEED = 620;        // cruise, world units per second
+const BOOST = 520;        // added at a full shake
+const GROUND = 620;       // world y of the ground plane
+const CEILING = -520;
+
+const cam = { x: 0, y: 0, z: 0, heading: 0 };
+let vy = 0, vs = 0, bank = 0;
+let ch = 1, sh = 0, cx = 0, cy = 0;
+
+function toCam(wx, wz) {                      // world point -> [right, ahead]
+  const dx = wx - cam.x, dz = wz - cam.z;
+  return [dx * ch - dz * sh, dx * sh + dz * ch];
+}
+
+// ---- clouds --------------------------------------------------------------
+const CLOUD_COUNT = 46;
+function placeCloud(c, ahead) {
+  const fwd = ahead ? 1500 + Math.random() * 700 : 100 + Math.random() * 2100;
+  const side = (Math.random() - 0.5) * 2600;
+  c.x = cam.x + sh * fwd + ch * side;
+  c.z = cam.z + ch * fwd - sh * side;
+  c.y = cam.y + (Math.random() - 0.5) * 760;
+  c.r = 45 + Math.random() * 105;
+  c.puffs = 3 + Math.floor(Math.random() * 3);
+  c.seed = Math.random() * 6.28;
+  return c;
+}
+const clouds = [];
+for (let i = 0; i < CLOUD_COUNT; i++) clouds.push(placeCloud({}, false));
+
+// ---- ground grid ---------------------------------------------------------
+const GRID = 420, GRID_N = 13;
+function groundLine(x1, z1, x2, z2, dy) {
+  const a = toCam(x1, z1), b = toCam(x2, z2);
+  let ax = a[0], az = a[1], bx = b[0], bz = b[1], t;
+  if (az < NEAR && bz < NEAR) return;
+  if (az < NEAR) { t = (NEAR - az) / (bz - az); ax += (bx - ax) * t; az = NEAR; }
+  else if (bz < NEAR) { t = (NEAR - bz) / (az - bz); bx += (ax - bx) * t; bz = NEAR; }
+  const s1 = FOCAL / az, s2 = FOCAL / bz;
+  ctx.moveTo(cx + ax * s1, cy + dy * s1);
+  ctx.lineTo(cx + bx * s2, cy + dy * s2);
+}
+
+// ---- loop ----------------------------------------------------------------
+let last = performance.now();
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  cx = W / 2; cy = H / 2;
+
+  // Read the phone exactly like a gamepad: -1..1 per axis, under our own names.
+  const { turn, climb, roll } = pad.axis;      // note: `bank` below is the SMOOTHED roll
+  const shake = pad.shake;
+
+  cam.heading += turn * TURN_RATE * Math.PI / 180 * dt;
+  ch = Math.cos(cam.heading); sh = Math.sin(cam.heading);
+
+  vy = (vy - climb * CLIMB_ACCEL * dt) * DAMPING;    // nose up = climb = y decreases
+  vs = (vs + roll * SLIP_ACCEL * dt) * DAMPING;      // right side down = slip right
+  cam.y += vy * dt;
+  if (cam.y > GROUND - 70) { cam.y = GROUND - 70; vy = 0; }
+  if (cam.y < CEILING) { cam.y = CEILING; vy = 0; }
+
+  const speed = SPEED + BOOST * shake;
+  cam.x += (sh * speed + ch * vs) * dt;
+  cam.z += (ch * speed - sh * vs) * dt;
+
+  bank += ((roll * 30) - bank) * Math.min(1, dt * 6);   // -1..1 -> degrees of bank
+
+  // --- sky --------------------------------------------------------------
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#111c42');
+  sky.addColorStop(0.5, '#2b4b86');
+  sky.addColorStop(1, '#8fb4d8');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // Everything below is in the banked frame: rolling the phone rolls the world.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-bank * Math.PI / 180 * 0.45);
+  ctx.translate(-cx, -cy);
+
+  const dy = GROUND - cam.y;
+
+  const g = ctx.createLinearGradient(0, cy, 0, H + H * 0.4);
+  g.addColorStop(0, '#5f7f9e');
+  g.addColorStop(0.25, '#3f6b56');
+  g.addColorStop(1, '#1d3a2f');
+  ctx.fillStyle = g;
+  ctx.fillRect(-W, cy, 3 * W, 2 * H);
+
+  const gx0 = Math.round(cam.x / GRID) * GRID, gz0 = Math.round(cam.z / GRID) * GRID;
+  const ext = GRID * GRID_N;
+  ctx.beginPath();
+  for (let k = -GRID_N; k <= GRID_N; k++) {
+    groundLine(gx0 + k * GRID, gz0 - ext, gx0 + k * GRID, gz0 + ext, dy);
+    groundLine(gx0 - ext, gz0 + k * GRID, gx0 + ext, gz0 + k * GRID, dy);
+  }
+  ctx.strokeStyle = 'rgba(190,230,210,0.20)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(-W, cy); ctx.lineTo(2 * W, cy);
+  ctx.strokeStyle = 'rgba(220,235,255,0.35)';
+  ctx.stroke();
+
+  // --- clouds -----------------------------------------------------------
+  for (const c of clouds) {
+    let p = toCam(c.x, c.z);
+    if (p[1] < NEAR || p[1] > 2600 || Math.abs(p[0]) > 3200) { placeCloud(c, true); p = toCam(c.x, c.z); }
+    c._rx = p[0]; c._rz = p[1];
+  }
+  const vis = clouds.slice().sort((a, b) => b._rz - a._rz);
+  for (const cl of vis) {
+    const s = FOCAL / cl._rz;
+    const sx = cx + cl._rx * s;
+    const sy = cy + (cl.y - cam.y) * s;
+    const sr = cl.r * s;
+    if (sr < 0.6 || sx < -sr * 3 || sx > W + sr * 3) continue;
+    const fade = Math.max(0, Math.min(1, (2600 - cl._rz) / 2000));
+    ctx.fillStyle = `rgba(255,255,255,${(0.08 + 0.55 * fade).toFixed(3)})`;
+    for (let p2 = 0; p2 < cl.puffs; p2++) {
+      const ang = cl.seed + (p2 / cl.puffs) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(sx + Math.cos(ang) * sr * 0.7, sy + Math.sin(ang) * sr * 0.3, sr * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // --- plane glyph ------------------------------------------------------
+  ctx.save();
+  ctx.translate(cx, cy + 46);
+  ctx.rotate(bank * Math.PI / 180 * 0.55);
+  ctx.fillStyle = '#f2f5ff';
+  ctx.strokeStyle = 'rgba(10,16,34,0.65)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -26);
+  ctx.lineTo(8, 4); ctx.lineTo(54, 16); ctx.lineTo(54, 24); ctx.lineTo(8, 20);
+  ctx.lineTo(6, 34); ctx.lineTo(20, 42); ctx.lineTo(20, 46); ctx.lineTo(0, 42);
+  ctx.lineTo(-20, 46); ctx.lineTo(-20, 42); ctx.lineTo(-6, 34); ctx.lineTo(-8, 20);
+  ctx.lineTo(-54, 24); ctx.lineTo(-54, 16); ctx.lineTo(-8, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  drawHud(speed);
+  requestAnimationFrame(frame);
+}
+
+function drawHud(speed) {
+  const hdg = ((cam.heading * 180 / Math.PI) % 360 + 360) % 360;
+  ctx.font = '13px ui-monospace, Menlo, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(232,236,248,0.8)';
+  ctx.fillText('HDG ' + hdg.toFixed(0).padStart(3, '0') + '°', W - 14, 24);
+  ctx.fillText('ALT ' + Math.round(GROUND - cam.y), W - 14, 42);
+  ctx.fillText('SPD ' + Math.round(speed), W - 14, 60);
+
+  // compass ribbon, so a turn is readable even with nothing else in frame
+  const rw = Math.min(360, W - 120), rx = (W - rw) / 2, ry = 18;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(rx, ry - 10, rw, 26); ctx.clip();
+  ctx.textAlign = 'center';
+  for (let d = -90; d <= 90; d += 15) {
+    const mark = hdg + d;
+    const mx = rx + rw / 2 + (d / 90) * (rw / 2);
+    const major = (((Math.round(mark) % 90) + 90) % 90) < 8;
+    ctx.fillStyle = `rgba(232,236,248,${major ? 0.8 : 0.3})`;
+    ctx.fillRect(mx, ry - 6, 1, major ? 10 : 5);
+    if (major) ctx.fillText(String((((Math.round(mark / 15) * 15) % 360) + 360) % 360), mx, ry + 14);
+  }
+  ctx.restore();
+  ctx.fillStyle = '#7fe3c0';
+  ctx.fillRect(rx + rw / 2 - 1, ry - 10, 2, 12);
+
+  if (!pad.connected) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(232,236,248,0.8)';
+    ctx.fillText('no controller', W / 2, H - 20);
+  }
+}
+
+requestAnimationFrame(frame);
+
+// Handy while testing from the console.
+window.pad = pad; window.cam = cam;
+</script>
+</body>
+</html>

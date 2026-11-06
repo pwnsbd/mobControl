@@ -1,0 +1,15 @@
+{
+  "name": "mobcontrol-workspace",
+  "private": true,
+  "description": "mobControl — the package, and two games built on it.",
+  "license": "MIT",
+  "workspaces": [
+    "mobcontrol",
+    "examples/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspace mobcontrol",
+    "flyer": "npm start --workspace tilt-flyer",
+    "cube": "npm start --workspace cube-run"
+  }
+}

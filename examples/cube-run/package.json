@@ -1,0 +1,17 @@
+{
+  "name": "cube-run",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A one-level cube platformer, played with a phone as the controller.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.3.0",
+    "mobcontrol": "*",
+    "ws": "^8.22.1"
+  }
+}

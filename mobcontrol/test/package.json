@@ -1,0 +1,4 @@
+{
+  "//": "The client tree is ESM; these tests import it directly.",
+  "type": "module"
+}

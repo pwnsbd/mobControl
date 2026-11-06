@@ -1,0 +1,349 @@
+:root {
+  --bg: #14121a;
+  --bg-lift: #2a2133;
+  --surface: rgba(255, 255, 255, 0.05);
+  --edge: rgba(255, 255, 255, 0.09);
+  --text: #f5f0ea;
+  --muted: #9a8f9f;
+  --amber: #ffb64d;
+  --coral: #ff7a59;
+  --ink: #3d1a0b;                 /* text on a lit button */
+  --under: #c2502f;               /* the button's underside */
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  color: var(--text);
+  background:
+    radial-gradient(130% 90% at 50% -18%, var(--bg-lift) 0%, rgba(20,18,26,0) 64%),
+    var(--bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  touch-action: none;                 /* this page is a controller, not a document */
+}
+
+main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px calc(18px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.pill {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  color: var(--amber);
+  padding: 6px 12px 6px 14px;
+  border: 1px solid rgba(255, 182, 77, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 182, 77, 0.07);
+}
+
+/* --- cards --------------------------------------------------------------- */
+
+.card {
+  width: 100%;
+  max-width: 360px;
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 26px 22px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+}
+.card[hidden] { display: none; }
+
+p { margin: 0; }
+
+#message, #teach-text {
+  max-width: 30ch;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+#teach-text { color: var(--text); font-size: 17px; font-weight: 500; }
+
+#status {
+  margin-top: auto;
+  font-size: 12px;
+  color: rgba(154, 143, 159, 0.8);
+  min-height: 1.2em;
+}
+
+/* --- buttons ------------------------------------------------------------- */
+
+button { font: inherit; border: 0; background: none; color: inherit; }
+
+.primary {
+  width: 100%;
+  padding: 17px 24px;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--ink);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--amber), var(--coral));
+  box-shadow: 0 12px 30px -14px rgba(255, 138, 83, 0.95);
+  transition: transform 80ms ease, filter 80ms ease;
+}
+.primary:active { transform: translateY(2px); filter: brightness(0.95); }
+.primary:disabled { opacity: 0.32; box-shadow: none; }
+
+.link {
+  font-size: 13px;
+  color: var(--amber);
+  padding: 8px 10px;
+  border-radius: 10px;
+  opacity: 0.9;
+}
+.link[hidden] { display: none; }
+
+/* --- the pose diagram ---------------------------------------------------- */
+
+#pose { width: 170px; height: 104px; }
+#pose .body { fill: #231d2e; stroke: rgba(255,255,255,0.16); stroke-width: 2; }
+#pose .screen { fill: url(#poseScreen); }
+#pose .nose { fill: var(--amber); }
+#pose .arrow { stroke: var(--amber); stroke-width: 2.5; fill: none; stroke-linecap: round; }
+#pose .arrow-head { fill: var(--amber); }
+#pose .label {
+  fill: var(--muted);
+  font-size: 8.5px;
+  font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: 0.14em;
+  text-anchor: middle;
+}
+
+/* --- the teaching dial --------------------------------------------------- */
+
+.dial { position: relative; width: 150px; height: 150px; display: grid; place-items: center; }
+.dial svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.dial-track { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 9; }
+.dial-fill {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-dasharray: 327;              /* 2 * pi * 52 */
+  stroke-dashoffset: 327;
+  transition: stroke-dashoffset 90ms linear;
+}
+#dial-value { font-family: ui-monospace, Menlo, monospace; font-size: 30px; font-weight: 500; }
+
+/* --- playing ------------------------------------------------------------- */
+
+#tilt {
+  width: 100%;
+  max-width: 340px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  position: relative;
+}
+#tilt[hidden] { display: none; }
+#tilt-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 16px rgba(255, 182, 77, 0.75);
+  transition: transform 70ms linear;
+}
+
+#pad {
+  flex: 1;
+  width: 100%;
+  position: relative;        /* buttons are placed in fractions of this box */
+  min-height: 0;
+}
+#pad[hidden] { display: none; }
+
+/* Every control is placed the same way; only its insides differ. */
+.control {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  touch-action: none;
+}
+
+/* --- a button ------------------------------------------------------------ */
+
+.control--button {
+  font-size: clamp(15px, 4.6vw, 22px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  background:
+    radial-gradient(120% 120% at 50% 16%, #ffd9a1 0%, var(--amber) 44%, var(--coral) 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.6),
+    0 8px 0 var(--under),
+    0 18px 32px -12px rgba(0,0,0,0.8);
+  transition: transform 70ms ease, box-shadow 70ms ease;
+}
+.control--button.is-down {
+  transform: translate(-50%, -50%) translateY(7px);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.32),
+    0 1px 0 var(--under),
+    0 6px 14px -8px rgba(0,0,0,0.85);
+}
+
+/* --- a stick, and a dpad (the same thing, snapped) ----------------------- */
+
+.control--stick,
+.control--dpad {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 10px 26px -14px rgba(0,0,0,0.9);
+}
+.control--dpad {
+  border-radius: 22%;
+  /* a plus, cut out of the square */
+  clip-path: polygon(34% 0, 66% 0, 66% 34%, 100% 34%, 100% 66%, 66% 66%,
+                     66% 100%, 34% 100%, 34% 66%, 0 66%, 0 34%, 34% 34%);
+}
+
+.control-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(120% 120% at 50% 18%, #ffd9a1 0%, var(--amber) 46%, var(--coral) 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.55),
+    0 6px 16px -6px rgba(0,0,0,0.8);
+  transition: transform 90ms ease-out;
+  pointer-events: none;
+}
+.control.is-active .control-knob { transition: none; }
+.control--dpad .control-knob { width: 30%; height: 30%; }
+
+.control--dpad .arm {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 70ms linear;
+  pointer-events: none;
+}
+.control--dpad .arm--up { left: 36%; right: 36%; top: 3%; height: 28%; }
+.control--dpad .arm--down { left: 36%; right: 36%; bottom: 3%; height: 28%; }
+.control--dpad .arm--left { top: 36%; bottom: 36%; left: 3%; width: 28%; }
+.control--dpad .arm--right { top: 36%; bottom: 36%; right: 3%; width: 28%; }
+.control--dpad .arm.is-lit { background: rgba(255, 182, 77, 0.55); }
+
+/* --- rearranging the buttons -------------------------------------------- */
+
+.handle {
+  font-size: 15px;
+  letter-spacing: -2px;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  line-height: 1;
+}
+.handle[hidden] { display: none; }
+.handle.is-active { color: var(--ink); background: var(--amber); border-color: transparent; }
+.handle.is-new {
+  color: var(--amber);
+  border-color: rgba(255, 182, 77, 0.5);
+  animation: nudge 1.6s ease-in-out 3;
+}
+@keyframes nudge {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 182, 77, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(255, 182, 77, 0); }
+}
+
+#edit-bar {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  font-size: 12px;
+  color: var(--muted);
+}
+#edit-bar[hidden] { display: none; }
+#edit-bar span { margin-right: auto; }
+
+.chip {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink);
+  background: var(--amber);
+  border-radius: 999px;
+  padding: 8px 16px;
+}
+
+#pad.is-editing { background: rgba(255, 182, 77, 0.04); border-radius: 20px; }
+#pad.is-editing .control {
+  outline: 2px dashed rgba(255, 182, 77, 0.8);
+  outline-offset: 5px;
+  transition: none;
+}
+#pad.is-editing .control.is-dragging {
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.6),
+    0 10px 0 var(--under),
+    0 28px 46px -16px rgba(0,0,0,0.9);
+}
+
+/* --- diagnostics --------------------------------------------------------- */
+
+#readout { width: 100%; max-width: 340px; display: grid; gap: 8px; }
+#readout[hidden] { display: none; }
+#axes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.axis {
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 9px 6px;
+}
+.axis b {
+  display: block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 19px;
+  font-weight: 500;
+}
+.axis span {
+  display: block;
+  margin-top: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+#shake-track { height: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+#shake { display: block; height: 100%; width: 0%; background: var(--amber); transition: width 90ms linear; }
