@@ -1,14 +1,16 @@
+/* Dark at every stage: forest while setting up, near-black while playing.
+   Ivory is a text colour here, never a background. */
 :root {
-  --bg: #14121a;
-  --bg-lift: #2a2133;
-  --surface: rgba(255, 255, 255, 0.05);
-  --edge: rgba(255, 255, 255, 0.09);
-  --text: #f5f0ea;
-  --muted: #9a8f9f;
-  --amber: #ffb64d;
-  --coral: #ff7a59;
-  --ink: #3d1a0b;                 /* text on a lit button */
-  --under: #c2502f;               /* the button's underside */
+  --bg: #0B1715;                  /* near-black: the active controller */
+  --bg-lift: #142B26;             /* deep forest: setup and calibration */
+  --surface: rgba(246, 241, 231, 0.05);
+  --edge: rgba(246, 241, 231, 0.12);
+  --text: #F6F1E7;                /* warm ivory */
+  --muted: #A5ADA5;               /* muted stone */
+  --sage: #85B18B;                /* feedback, press, connection-good */
+  --amber: #D5AB72;               /* occasional highlight, never a default */
+  --ink: #0B1715;                 /* text on a lit button */
+  --under: #4C7453;               /* the button's underside */
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -17,15 +19,15 @@ html, body {
   margin: 0;
   height: 100%;
   color: var(--text);
-  background:
-    radial-gradient(130% 90% at 50% -18%, var(--bg-lift) 0%, rgba(20,18,26,0) 64%),
-    var(--bg);
+  background: var(--bg-lift);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-user-select: none;
   user-select: none;
   overscroll-behavior: none;
   touch-action: none;                 /* this page is a controller, not a document */
+  overflow: hidden;
 }
+html[data-stage="playing"] { background: var(--bg); }
 
 main {
   height: 100%;
@@ -33,7 +35,9 @@ main {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 16px 18px calc(18px + env(safe-area-inset-bottom));
+  position: relative;
+  padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+           max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   text-align: center;
 }
 
@@ -49,11 +53,11 @@ header {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 12px;
   letter-spacing: 0.28em;
-  color: var(--amber);
+  color: var(--text);
   padding: 6px 12px 6px 14px;
-  border: 1px solid rgba(255, 182, 77, 0.28);
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  background: rgba(255, 182, 77, 0.07);
+  background: var(--surface);
 }
 
 /* --- cards --------------------------------------------------------------- */
@@ -66,10 +70,10 @@ header {
   flex-direction: column;
   align-items: center;
   gap: 18px;
-  padding: 26px 22px;
+  padding: 22px 20px;
   background: var(--surface);
   border: 1px solid var(--edge);
-  border-radius: 24px;
+  border-radius: 18px;
 }
 .card[hidden] { display: none; }
 
@@ -86,7 +90,7 @@ p { margin: 0; }
 #status {
   margin-top: auto;
   font-size: 12px;
-  color: rgba(154, 143, 159, 0.8);
+  color: var(--muted);
   min-height: 1.2em;
 }
 
@@ -101,27 +105,37 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   font-weight: 650;
   color: var(--ink);
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--amber), var(--coral));
-  box-shadow: 0 12px 30px -14px rgba(255, 138, 83, 0.95);
-  transition: transform 80ms ease, filter 80ms ease;
+  background: linear-gradient(180deg, #A9CDAE, var(--sage));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    0 4px 0 var(--under),
+    0 12px 18px -10px rgba(0,0,0,0.7);
+  transition: transform 80ms ease, box-shadow 80ms ease;
 }
-.primary:active { transform: translateY(2px); filter: brightness(0.95); }
-.primary:disabled { opacity: 0.32; box-shadow: none; }
+.primary:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    0 1px 0 var(--under),
+    0 4px 8px -6px rgba(0,0,0,0.7);
+}
+.primary:disabled { opacity: 0.4; box-shadow: none; transform: none; }
 
 .link {
   font-size: 13px;
-  color: var(--amber);
-  padding: 8px 10px;
+  color: var(--sage);
+  padding: 10px 12px;
+  min-height: 40px;
   border-radius: 10px;
-  opacity: 0.9;
 }
+.link:active { background: var(--surface); }
 .link[hidden] { display: none; }
 
 /* --- the pose diagram ---------------------------------------------------- */
 
 #pose { width: 170px; height: 104px; }
-#pose .body { fill: #231d2e; stroke: rgba(255,255,255,0.16); stroke-width: 2; }
-#pose .screen { fill: url(#poseScreen); }
+#pose .body { fill: #0B1715; stroke: var(--edge); stroke-width: 2; }
+#pose .screen { fill: #1B3A33; }   /* overrides the gradient fill in pose-diagram.js */
 #pose .nose { fill: var(--amber); }
 #pose .arrow { stroke: var(--amber); stroke-width: 2.5; fill: none; stroke-linecap: round; }
 #pose .arrow-head { fill: var(--amber); }
@@ -137,10 +151,10 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 
 .dial { position: relative; width: 150px; height: 150px; display: grid; place-items: center; }
 .dial svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.dial-track { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 9; }
+.dial-track { fill: none; stroke: var(--edge); stroke-width: 9; }
 .dial-fill {
   fill: none;
-  stroke: var(--amber);
+  stroke: var(--sage);
   stroke-width: 9;
   stroke-linecap: round;
   stroke-dasharray: 327;              /* 2 * pi * 52 */
@@ -156,7 +170,7 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   max-width: 340px;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.08);
+  background: var(--edge);
   position: relative;
 }
 #tilt[hidden] { display: none; }
@@ -168,8 +182,8 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   height: 14px;
   margin: -7px 0 0 -7px;
   border-radius: 50%;
-  background: var(--amber);
-  box-shadow: 0 0 16px rgba(255, 182, 77, 0.75);
+  background: var(--sage);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
   transition: transform 70ms linear;
 }
 
@@ -198,17 +212,17 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   letter-spacing: 0.08em;
   color: var(--ink);
   background:
-    radial-gradient(120% 120% at 50% 16%, #ffd9a1 0%, var(--amber) 44%, var(--coral) 100%);
+    radial-gradient(120% 120% at 50% 16%, #C4DEC8 0%, var(--sage) 50%, #6C9873 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.6),
+    inset 0 2px 0 rgba(255,255,255,0.5),
     0 8px 0 var(--under),
-    0 18px 32px -12px rgba(0,0,0,0.8);
+    0 16px 24px -12px rgba(0,0,0,0.8);
   transition: transform 70ms ease, box-shadow 70ms ease;
 }
 .control--button.is-down {
   transform: translate(-50%, -50%) translateY(7px);
   box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.32),
+    inset 0 2px 0 rgba(255,255,255,0.28),
     0 1px 0 var(--under),
     0 6px 14px -8px rgba(0,0,0,0.85);
 }
@@ -217,7 +231,7 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 
 .control--stick,
 .control--dpad {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface);
   border: 1px solid var(--edge);
   box-shadow: inset 0 10px 26px -14px rgba(0,0,0,0.9);
 }
@@ -237,9 +251,9 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   border-radius: 50%;
   transform: translate(-50%, -50%);
   background:
-    radial-gradient(120% 120% at 50% 18%, #ffd9a1 0%, var(--amber) 46%, var(--coral) 100%);
+    radial-gradient(120% 120% at 50% 18%, #C4DEC8 0%, var(--sage) 50%, #6C9873 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.55),
+    inset 0 2px 0 rgba(255,255,255,0.45),
     0 6px 16px -6px rgba(0,0,0,0.8);
   transition: transform 90ms ease-out;
   pointer-events: none;
@@ -249,7 +263,7 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 
 .control--dpad .arm {
   position: absolute;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--edge);
   transition: background 70ms linear;
   pointer-events: none;
 }
@@ -257,7 +271,7 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 .control--dpad .arm--down { left: 36%; right: 36%; bottom: 3%; height: 28%; }
 .control--dpad .arm--left { top: 36%; bottom: 36%; left: 3%; width: 28%; }
 .control--dpad .arm--right { top: 36%; bottom: 36%; right: 3%; width: 28%; }
-.control--dpad .arm.is-lit { background: rgba(255, 182, 77, 0.55); }
+.control--dpad .arm.is-lit { background: rgba(133, 177, 139, 0.6); }
 
 /* --- rearranging the buttons -------------------------------------------- */
 
@@ -271,15 +285,15 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   line-height: 1;
 }
 .handle[hidden] { display: none; }
-.handle.is-active { color: var(--ink); background: var(--amber); border-color: transparent; }
+.handle.is-active { color: var(--ink); background: var(--sage); border-color: transparent; }
 .handle.is-new {
   color: var(--amber);
-  border-color: rgba(255, 182, 77, 0.5);
+  border-color: rgba(213, 171, 114, 0.55);
   animation: nudge 1.6s ease-in-out 3;
 }
 @keyframes nudge {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 182, 77, 0.45); }
-  50% { box-shadow: 0 0 0 7px rgba(255, 182, 77, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(213, 171, 114, 0.4); }
+  50% { box-shadow: 0 0 0 7px rgba(213, 171, 114, 0); }
 }
 
 #edit-bar {
@@ -302,23 +316,23 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   font-size: 13px;
   font-weight: 650;
   color: var(--ink);
-  background: var(--amber);
+  background: var(--sage);
   border-radius: 999px;
-  padding: 8px 16px;
+  padding: 10px 18px;
 }
 
-#pad.is-editing { background: rgba(255, 182, 77, 0.04); border-radius: 20px; }
+#pad.is-editing { background: rgba(213, 171, 114, 0.05); border-radius: 20px; }
 #pad.is-editing .control {
-  outline: 2px dashed rgba(255, 182, 77, 0.8);
+  outline: 2px dashed rgba(213, 171, 114, 0.8);
   outline-offset: 5px;
   transition: none;
 }
 #pad.is-editing .control.is-dragging {
   filter: brightness(1.08);
   box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.6),
+    inset 0 2px 0 rgba(255,255,255,0.5),
     0 10px 0 var(--under),
-    0 28px 46px -16px rgba(0,0,0,0.9);
+    0 24px 36px -16px rgba(0,0,0,0.9);
 }
 
 /* --- diagnostics --------------------------------------------------------- */
@@ -345,5 +359,132 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   letter-spacing: 0.16em;
   color: var(--muted);
 }
-#shake-track { height: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
-#shake { display: block; height: 100%; width: 0%; background: var(--amber); transition: width 90ms linear; }
+#shake-track { height: 4px; border-radius: 999px; background: var(--edge); overflow: hidden; }
+#shake {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--sage);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 90ms linear;
+}
+
+/* --- landscape ----------------------------------------------------------- */
+/* How a gamepad is held. Insets keep the notch side clear (see `main`); the
+   pad fills what is left, so controls sit under the thumbs at both edges. */
+
+@media (orientation: landscape) and (max-height: 520px) {
+  main { gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  header { min-height: 30px; }
+
+  /* setup: the diagram beside the words, so nothing needs to scroll */
+  .card { max-width: 560px; padding: 14px 20px; gap: 10px 22px; }
+  #setup {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: center;
+    align-items: center;
+  }
+  #setup #pose { grid-row: 1 / span 3; width: 150px; height: 92px; }
+  #setup > :not(#pose) { grid-column: 2; }
+  #teaching {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: center;
+    align-items: center;
+  }
+  #teaching .dial { grid-row: 1 / span 2; width: 110px; height: 110px; }
+  #teaching > :not(.dial) { grid-column: 2; }
+  #dial-value { font-size: 24px; }
+  #setup .primary { padding: 12px 24px; font-size: 16px; }
+  #message, #teach-text { max-width: none; }
+
+  /* playing: chrome clusters top-centre, clear of both thumbs */
+  html[data-stage="playing"] header { justify-content: center; gap: 14px; }
+  html[data-stage="playing"] #status {
+    position: absolute;
+    left: 50%;
+    bottom: max(6px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    margin: 0;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #tilt { max-width: 280px; }
+  #readout { position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
+             transform: translateX(-50%); width: 40%; pointer-events: none; }
+  .axis { padding: 4px; }
+  .axis b { font-size: 14px; }
+}
+
+/* Very narrow phones: shave padding rather than clip. */
+@media (max-width: 340px) {
+  main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .card { padding: 18px 14px; }
+  #pose { max-width: 100%; }
+}
+
+/* --- connection ---------------------------------------------------------- */
+/* Always visible. Sage and filled when the link is good; a hollow stone ring
+   when it is not. Keyed off the stage, so it cannot disagree with the flow. */
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.conn::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);          /* hollow: not connected */
+}
+.conn::after { content: "OFFLINE"; }
+html[data-stage="ready"] .conn,
+html[data-stage="armed"] .conn,
+html[data-stage="teaching"] .conn,
+html[data-stage="playing"] .conn { color: var(--sage); }
+html[data-stage="ready"] .conn::before,
+html[data-stage="armed"] .conn::before,
+html[data-stage="teaching"] .conn::before,
+html[data-stage="playing"] .conn::before { background: var(--sage); border-color: var(--sage); }
+html[data-stage="ready"] .conn::after,
+html[data-stage="armed"] .conn::after,
+html[data-stage="teaching"] .conn::after,
+html[data-stage="playing"] .conn::after { content: "LIVE"; }
+html:not([data-stage]) .conn::after,
+html[data-stage="connecting"] .conn::after { content: "LINKING"; }
+
+/* interrupted must read as degraded, not merely restyled */
+html[data-stage="interrupted"] .pill { opacity: 0.6; }
+html[data-stage="interrupted"] #setup {
+  border-style: dashed;
+  border-color: rgba(165, 173, 165, 0.5);
+}
+html[data-stage="interrupted"] #message { color: var(--amber); }
+html[data-stage="interrupted"] #pose { opacity: 0.45; filter: grayscale(1); }
+
+/* --- a quiet play surface ------------------------------------------------ */
+
+html[data-stage="playing"] .pill { color: var(--muted); border-color: transparent; background: none; }
+html[data-stage="playing"] #recentre { color: var(--muted); font-size: 12px; }
+html[data-stage="playing"] #status { font-size: 11px; }
+html[data-stage="playing"] .handle { border-color: transparent; }
+
+/* --- reduced motion ------------------------------------------------------ */
+/* Press depth is a state change, not an animation, so it stays; only the
+   in-between frames and the attention-getting pulse go. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.001ms !important;
+    animation: none !important;
+  }
+}

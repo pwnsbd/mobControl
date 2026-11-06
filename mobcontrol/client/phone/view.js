@@ -18,6 +18,7 @@ const DOUBLE_TAP_MS = 450;
 export class ControllerView {
   #el;
   #pad;
+  #root;
   #store = new PadLayoutStore();
   #controls = [];
   #tiltVisible = false;
@@ -25,6 +26,7 @@ export class ControllerView {
   #editing = false;
 
   constructor(root = document) {
+    this.#root = root;
     const byId = (id) => root.getElementById(id);
     this.#el = {
       room: byId('room'), setup: byId('setup'), teaching: byId('teaching'),
@@ -127,7 +129,7 @@ export class ControllerView {
     this.#el.roll.textContent = `${roll.toFixed(0)}°`;
   }
 
-  showShake(level) { this.#el.shake.style.width = `${Math.round(level * 100)}%`; }
+  showShake(level) { this.#el.shake.style.transform = `scaleX(${level})`; }
 
   set debug(on) { this.#el.readout.hidden = !on; }
   set usesTilt(on) { this.#tiltVisible = on; }
@@ -142,6 +144,8 @@ export class ControllerView {
     const teaching = stage === 'teaching';
     const hasControls = this.#controls.length > 0;
 
+    // The stylesheet keys its palette and layout off this; no logic lives here.
+    this.#root.documentElement.dataset.stage = stage;
     this.#el.setup.hidden = playing || teaching;
     this.#el.teaching.hidden = !teaching;
     this.#el.recentre.hidden = !playing;
