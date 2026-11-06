@@ -25,6 +25,7 @@ const DEFAULTS = {
   axes: {},
   buttons: [],              // shorthand for controls of type 'button'
   controls: [],             // { id, type: 'button' | 'stick' | 'dpad', label?, side? }
+  orientation: 'any',       // 'landscape' | 'portrait' | 'any': how the controls were designed to be held
   deadzone: 3,        // degrees of slop ignored
   range: 35,          // degrees that count as full deflection
   smoothing: 0,
@@ -56,6 +57,7 @@ export class PhoneController {
       mount: settings.mount,
       usesTilt: this.#mapper.names.length > 0,
       controls,
+      orientation: settings.orientation,     // unknown values become 'any' on the wire
       debug: settings.debug,
       allowLayoutEdit: settings.allowLayoutEdit
     });
