@@ -16,11 +16,11 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
 
 ## Next (visual pass — the point of the exercise)
 
-- [ ] **P1.1 — landscape + safe areas.** `controller.css` has one bottom inset
+- [x] **P1.1 — landscape + safe areas.** `controller.css` has one bottom inset
       rule and no `@media`/orientation handling. Gamepads are held sideways.
-- [ ] **P1.2 — repalette to cream/forest.** Swap the existing `:root` values;
+- [x] **P1.2 — repalette to cream/forest.** Swap the existing `:root` values;
       no new token system needed.
-- [ ] **P1.3 — tactile pad.** Press depth, movement, optional haptics.
+- [x] **P1.3 — tactile pad.** Press depth, movement, optional haptics.
 - [ ] **P1.4 — layout templates.** Gamepad / dual-stick / D-pad presets. This is
       the one good product idea in the reference image; the brief omits it.
 
@@ -53,6 +53,13 @@ Each is defensible someday, none blocks a player or a developer today.
   directory argument fails: `test/package.json` makes node load it as a module.
 
 ## Agent notes
+
+- **A builder with no browser cannot finish a visual task.** The P1 pass landed
+  three defects that only rendering showed: the playing background never
+  switched, every panel painted at once in landscape, and controls sized off
+  the pad's width overflowed when the phone turned. All three looked correct in
+  the source. Budget a Conductor render pass after every visual task.
+
 
 - This repo is a plain `git init` with no remote. Worktree builders branch from
   `main`; name the base commit in every brief.
