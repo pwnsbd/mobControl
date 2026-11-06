@@ -127,7 +127,7 @@ export class ControllerView {
     this.#el.roll.textContent = `${roll.toFixed(0)}°`;
   }
 
-  showShake(level) { this.#el.shake.style.width = `${Math.round(level * 100)}%`; }
+  showShake(level) { this.#el.shake.style.transform = `scaleX(${level})`; }
 
   set debug(on) { this.#el.readout.hidden = !on; }
   set usesTilt(on) { this.#tiltVisible = on; }
