@@ -10,10 +10,16 @@
   --sage: #85B18B;                /* feedback, press, connection-good */
   --amber: #D5AB72;               /* occasional highlight, never a default */
   --ink: #0B1715;                 /* text on a lit button */
-  --under: #4C7453;               /* the button's underside */
+  --under: #4C7453;
+  --arm: rgba(165, 173, 165, 0.26);   /* the d-pad cross: a part, not a hint */               /* the button's underside */
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* The stage machine hides panels with the hidden attribute. Any id- or
+   class-level display rule would outrank the UA stylesheet and paint a
+   hidden panel anyway, so hidden wins here, once, for everything. */
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -27,7 +33,9 @@ html, body {
   touch-action: none;                 /* this page is a controller, not a document */
   overflow: hidden;
 }
-html[data-stage="playing"] { background: var(--bg); }
+/* body paints over html, so the stage switch must name both. */
+html[data-stage="playing"],
+html[data-stage="playing"] body { background: var(--bg); }
 
 main {
   height: 100%;
@@ -263,7 +271,9 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 
 .control--dpad .arm {
   position: absolute;
-  background: var(--edge);
+  background: var(--arm);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(246, 241, 231, 0.10);
   transition: background 70ms linear;
   pointer-events: none;
 }

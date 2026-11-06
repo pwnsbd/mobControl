@@ -82,7 +82,11 @@ export class ControlPad {
       const { x, y, size } = this.#layout[id] ?? { x: 0.5, y: 0.5, size: 'm' };
       control.element.style.left = `${x * 100}%`;
       control.element.style.top = `${y * 100}%`;
-      control.element.style.width = `${SIZE_FRACTION[size] * 100}%`;
+      // Sized off the short edge, not the pad's width: a control is held by a
+      // thumb, and a thumb does not grow when the phone is turned sideways.
+      // A width percentage plus aspect-ratio:1 made landscape controls taller
+      // than the pad itself.
+      control.element.style.width = `calc(${SIZE_FRACTION[size]} * 100vmin)`;
     }
   }
 
