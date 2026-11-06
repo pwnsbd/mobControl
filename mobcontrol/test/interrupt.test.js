@@ -318,3 +318,40 @@ test('a layout that stops caring about orientation ends the turn screen', () => 
   r.handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt: false, controls: [] });
   assert.equal(r.stages.at(-1), 'playing');
 });
+
+test('nothing the player touches is sent while the turn screen is up', () => {
+  const r = rig({ orientation: 'landscape', landscape: true });
+  r.turn(false);
+  assert.equal(r.stages.at(-1), 'rotate');
+  r.sent.length = 0;
+  hold(r);                               // a stray touch that slips past the hidden pad
+  r.view.onControlsFire();
+  assert.equal(inputs(r).length, 0);
+});
+
+// --- the turn screen is the only panel on show (real PhoneView, fake DOM) ---
+
+test('on the rotate stage the setup panel is hidden and the turn panel shown', async () => {
+  const els = new Map();
+  const el = () => ({
+    hidden: false, disabled: false, textContent: '', dataset: {}, style: {},
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    addEventListener() {}, setAttribute() {}, appendChild() {}, replaceChildren() {},
+    querySelector: () => null, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 0, height: 0 })
+  });
+  const root = { getElementById: (id) => { if (!els.has(id)) els.set(id, el()); return els.get(id); } };
+  globalThis.document = { createElement: el };
+  globalThis.window = { addEventListener() {}, matchMedia: () => ({ matches: false }), innerWidth: 800, innerHeight: 400 };
+  const { ControllerView } = await import('../client/phone/view.js');
+  const view = new ControllerView(root);
+  const setup = root.getElementById('setup');
+  const turn = root.getElementById('rotate');
+
+  view.stage = 'rotate';
+  assert.equal(setup.hidden, true, 'setup panel must not show behind the turn screen');
+  assert.equal(turn.hidden, false);
+
+  view.stage = 'ready';
+  assert.equal(setup.hidden, false);
+  assert.equal(turn.hidden, true);
+});

@@ -49,3 +49,32 @@ test('a dpad never reports a fractional direction', () => {
     assert.ok([-1, 0, 1].includes(y), `y was ${y} at ${angle} degrees`);
   }
 });
+
+// A face button's accent is a presentation hint the CSS keys off. It reaches
+// the DOM as data-accent, and anything unrecognised leaves the button default.
+test('a button carries only a known accent onto its element', async () => {
+  const made = [];
+  globalThis.document = {
+    createElement: () => {
+      const el = {
+        dataset: {}, style: {}, classList: { add() {}, remove() {}, toggle() {} },
+        addEventListener() {}, append() {}, setAttribute() {},
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 })
+      };
+      made.push(el);
+      return el;
+    }
+  };
+  const { create } = await import('../client/phone/controls.js');
+
+  for (const accent of ['amber', 'blue', 'red', 'green']) {
+    assert.equal(create({ id: 'a', type: 'button', accent }).element.dataset.accent, accent);
+  }
+  for (const junk of ['puce', '', null, undefined, 0, {}, 'AMBER']) {
+    assert.equal(
+      create({ id: 'a', type: 'button', accent: junk }).element.dataset.accent,
+      undefined,
+      `"${String(junk)}" must not reach the DOM`
+    );
+  }
+});
