@@ -7,11 +7,15 @@
 // Normalized default positions (fractions of the pad, inside pad-layout's
 // 0.14..0.86 clamp) for a four-button diamond on the right half. Slot order
 // follows the default ids: y west, x north, b south, a east.
+// Sized and spaced from the WORST case, which is landscape: the pad is then
+// about 289pt tall, and a small button is 0.23 of the short edge, so the north
+// and south slots need a third of the pad's height between their centres or
+// they touch. Portrait is roomier and inherits the same numbers.
 const DIAMOND = [
-  { x: 0.52, y: 0.5 },
-  { x: 0.68, y: 0.2 },
-  { x: 0.68, y: 0.8 },
-  { x: 0.84, y: 0.5 }
+  { x: 0.55, y: 0.615, size: 's' },   // west
+  { x: 0.70, y: 0.45, size: 's' },    // north
+  { x: 0.70, y: 0.78, size: 's' },    // south
+  { x: 0.85, y: 0.615, size: 's' }    // east
 ];
 
 const GAMEPAD_BUTTONS = ['y', 'x', 'b', 'a'];

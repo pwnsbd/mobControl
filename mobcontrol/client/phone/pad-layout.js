@@ -42,9 +42,12 @@ export function defaultLayout(controls) {
     const index = seen[side]++;
     const x = side === 'right' ? EDGE_X - index * STEP_X : 1 - EDGE_X + index * STEP_X;
     const hinted = isFraction(control.x) && isFraction(control.y);
+    // A cluster of four needs smaller parts than a lone button, so size is a
+    // hint too. Anything that is not a known size falls back to the type's.
+    const size = SIZES.includes(control.size) ? control.size : byType.size;
     layout[control.id] = hinted
-      ? { x: clamp(control.x, 0.14, 0.86), y: clamp(control.y, 0.14, 0.86), size: byType.size }
-      : { x: clamp(x, 0.14, 0.86), y: DEFAULT_Y, size: byType.size };
+      ? { x: clamp(control.x, 0.14, 0.86), y: clamp(control.y, 0.14, 0.86), size }
+      : { x: clamp(x, 0.14, 0.86), y: DEFAULT_Y, size };
   }
   return layout;
 }
