@@ -369,3 +369,59 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   transform-origin: left;
   transition: transform 90ms linear;
 }
+
+/* --- landscape ----------------------------------------------------------- */
+/* How a gamepad is held. Insets keep the notch side clear (see `main`); the
+   pad fills what is left, so controls sit under the thumbs at both edges. */
+
+@media (orientation: landscape) and (max-height: 520px) {
+  main { gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  header { min-height: 30px; }
+
+  /* setup: the diagram beside the words, so nothing needs to scroll */
+  .card { max-width: 560px; padding: 14px 20px; gap: 10px 22px; }
+  #setup {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: center;
+    align-items: center;
+  }
+  #setup #pose { grid-row: 1 / span 3; width: 150px; height: 92px; }
+  #setup > :not(#pose) { grid-column: 2; }
+  #teaching {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: center;
+    align-items: center;
+  }
+  #teaching .dial { grid-row: 1 / span 2; width: 110px; height: 110px; }
+  #teaching > :not(.dial) { grid-column: 2; }
+  #dial-value { font-size: 24px; }
+  #setup .primary { padding: 12px 24px; font-size: 16px; }
+  #message, #teach-text { max-width: none; }
+
+  /* playing: chrome clusters top-centre, clear of both thumbs */
+  html[data-stage="playing"] header { justify-content: center; gap: 14px; }
+  html[data-stage="playing"] #status {
+    position: absolute;
+    left: 50%;
+    bottom: max(6px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    margin: 0;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #tilt { max-width: 280px; }
+  #readout { position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
+             transform: translateX(-50%); width: 40%; pointer-events: none; }
+  .axis { padding: 4px; }
+  .axis b { font-size: 14px; }
+}
+
+/* Very narrow phones: shave padding rather than clip. */
+@media (max-width: 340px) {
+  main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .card { padding: 18px 14px; }
+  #pose { max-width: 100%; }
+}
