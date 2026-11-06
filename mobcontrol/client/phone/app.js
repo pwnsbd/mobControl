@@ -189,6 +189,7 @@ export class ControllerApp {
   #enterPlay({ hint = true } = {}) {
     if (this.#needsTurn()) {
       this.#releaseControls();
+      this.#sendFrame({ force: true });    // say so while we are still sending
       this.view.showTurn(this.#orientation);
       this.#setStage('rotate');
       return;
@@ -339,7 +340,9 @@ export class ControllerApp {
 
   /** Buttons send immediately; tilt is rate limited. */
   #sendFrame({ tilt = null, force = false } = {}) {
-    if (this.#stage === 'interrupted') return;     // nobody is listening
+    // Nobody is listening while interrupted; and while the player is physically
+    // turning the phone, every tilt reading is a lurch they did not ask for.
+    if (this.#stage === 'interrupted' || this.#stage === 'rotate') return;
     if (!force && !this.#allowSend()) return;
     const { buttons, sticks } = this.view.controlState;
     this.transport.send(protocol.input({
