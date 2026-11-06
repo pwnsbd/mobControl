@@ -21,8 +21,20 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
 - [x] **P1.2 — repalette to cream/forest.** Swap the existing `:root` values;
       no new token system needed.
 - [x] **P1.3 — tactile pad.** Press depth, movement, optional haptics.
-- [ ] **P1.4 — layout templates.** Gamepad / dual-stick / D-pad presets. This is
+- [~] **P1.4 — layout templates.** Gamepad / dual-stick / D-pad presets. This is
       the one good product idea in the reference image; the brief omits it.
+
+- [ ] **P1.4b — a layout declares its orientation.** Contract:
+      `docs/contracts/layout-orientation.md`. Positions are fractions of a pad
+      that is ~339x672 portrait and ~776x289 landscape, so one set of numbers
+      cannot serve both. Templates say which they were designed for.
+- [ ] **P1.5 — the drag control type.** `controls.js` has exactly three types:
+      button, stick, dpad. A stick is a fixed thumbstick, not a drag surface.
+      Games that want no gamepad — quizzes, card and puzzle games, simple tilt
+      games — want a draggable or swipeable area, usually in portrait. This is
+      a new input primitive and gets the same treatment sticks got: its own
+      contract, its own tests.
+- [ ] **P1.6 — visible edit menu.** Replace the double-tap hint.
 
 ## Parked (justify before starting)
 
