@@ -225,6 +225,20 @@ Defaults follow the type rather than nagging the developer for positions: a stic
 lands under the left thumb and starts larger, buttons land on the right. The player moves
 them anyway.
 
+### Layout templates — one line for a familiar arrangement
+
+```js
+import { PhoneController, layouts } from '/__phone/controller.js';
+
+new PhoneController({ controls: layouts.gamepad() });   // d-pad left, y/x/b/a diamond right
+new PhoneController({ controls: layouts.gamepad({ buttons: ['FIRE', 'BOMB'] }) });   // override
+```
+
+`layouts.gamepad()`, `layouts.dualStick()` (`move` + `aim`) and `layouts.dpad()` (d-pad plus
+`b` `a`) return plain control arrays, so you can filter, concat or edit them
+(`[...layouts.dualStick(), { type: 'button', id: 'boost' }]`). A control may carry optional
+normalized `x`/`y` (0..1) as its starting position; the player's own arrangement still wins.
+
 ### The player arranges the controls
 
 The developer says *which* buttons exist and hints at a side; the **player** decides where

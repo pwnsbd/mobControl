@@ -41,9 +41,17 @@ export function defaultLayout(controls) {
     const side = control.side === 'left' || control.side === 'right' ? control.side : byType.side;
     const index = seen[side]++;
     const x = side === 'right' ? EDGE_X - index * STEP_X : 1 - EDGE_X + index * STEP_X;
-    layout[control.id] = { x: clamp(x, 0.14, 0.86), y: DEFAULT_Y, size: byType.size };
+    const hinted = isFraction(control.x) && isFraction(control.y);
+    layout[control.id] = hinted
+      ? { x: clamp(control.x, 0.14, 0.86), y: clamp(control.y, 0.14, 0.86), size: byType.size }
+      : { x: clamp(x, 0.14, 0.86), y: DEFAULT_Y, size: byType.size };
   }
   return layout;
+}
+
+/** A developer's x/y hint is only used as a pair; anything else is ignored. */
+function isFraction(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
 }
 
 /**
