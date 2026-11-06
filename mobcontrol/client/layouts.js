@@ -1,8 +1,9 @@
 // Physical arrangements as one-line choices: gamepad, dual-stick, d-pad + buttons.
 //
-// Each preset is a plain function returning a plain array of control specs —
-// exactly what a developer could have typed by hand. Nothing here remembers
-// anything, and nothing depends on an array having come from here.
+// Each preset is a plain function returning a plain config fragment,
+// { controls, orientation } — exactly what a developer could have typed by
+// hand. Nothing here remembers anything, and nothing depends on a fragment
+// having come from here. Spread it, or take just `.controls`.
 
 // Normalized default positions (fractions of the pad, inside pad-layout's
 // 0.14..0.86 clamp) for a four-button diamond on the right half. Slot order
@@ -66,20 +67,23 @@ function dpadWithButtons(options, defaults, slots) {
 export const layouts = Object.freeze({
   /** Left d-pad, right diamond of four buttons (y x b a). */
   gamepad(options = {}) {
-    return dpadWithButtons(options, GAMEPAD_BUTTONS, DIAMOND);
+    return { controls: dpadWithButtons(options, GAMEPAD_BUTTONS, DIAMOND), orientation: 'landscape' };
   },
 
   /** Left stick `move`, right stick `aim`. */
   dualStick(options = {}) {
-    return dedupe([
-      { id: idOf(options, 'move'), type: 'stick', label: 'MOVE', side: 'left' },
-      { id: idOf(options, 'aim'), type: 'stick', label: 'AIM', side: 'right' }
-    ]);
+    return {
+      controls: dedupe([
+        { id: idOf(options, 'move'), type: 'stick', label: 'MOVE', side: 'left' },
+        { id: idOf(options, 'aim'), type: 'stick', label: 'AIM', side: 'right' }
+      ]),
+      orientation: 'landscape'
+    };
   },
 
   /** Left d-pad, right pair `b` `a` in a row. */
   dpad(options = {}) {
-    return dpadWithButtons(options, DPAD_BUTTONS, []);
+    return { controls: dpadWithButtons(options, DPAD_BUTTONS, []), orientation: 'any' };
   }
 });
 
