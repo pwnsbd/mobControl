@@ -7,10 +7,10 @@ import * as poseDiagram from './pose-diagram.js';
 import { ControlPad } from './control-pad.js';
 import { PadLayoutStore } from './pad-layout.js';
 
-/** @typedef {'connecting'|'ready'|'armed'|'teaching'|'playing'|'blocked'} Stage */
+/** @typedef {'connecting'|'ready'|'armed'|'teaching'|'playing'|'interrupted'|'blocked'} Stage */
 
 const START_LABEL = {
-  connecting: 'Start', ready: 'Start', armed: 'Calibrate', blocked: 'Start'
+  connecting: 'Start', ready: 'Start', armed: 'Calibrate', interrupted: 'Start', blocked: 'Start'
 };
 const DIAL_CIRCUMFERENCE = 327;        // 2 * pi * r, r = 52
 const DOUBLE_TAP_MS = 450;
@@ -68,6 +68,9 @@ export class ControllerView {
 
   /** @returns {{buttons:Object, sticks:Object}} */
   get controlState() { return this.#pad.state; }
+
+  /** Let go of every held button and stick. */
+  releaseControls() { this.#pad.releaseAll(); }
 
   showRoom(room) { this.#el.room.textContent = room ?? 'no room'; }
   showPose(mount, options) { this.#el.pose.innerHTML = poseDiagram.render(mount, options); }
@@ -149,7 +152,7 @@ export class ControllerView {
     if (!playing && this.#editing) this.setEditing(false);
     if (!playing && !teaching) {
       this.#el.start.textContent = START_LABEL[stage];
-      this.#el.start.disabled = stage === 'blocked' || stage === 'connecting';
+      this.#el.start.disabled = stage === 'blocked' || stage === 'connecting' || stage === 'interrupted';
     }
   }
 }
