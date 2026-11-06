@@ -18,6 +18,7 @@ const SAY = {
   noReading: 'No sensor reading yet — move the phone slightly.',
   recentred: 'Recentred. This posture is now level.',
   playing: 'Tilt to steer.',
+  interrupted: 'Connection lost — input is not reaching the game. Reconnecting…',
   buttonsOnly: 'Ready — use the buttons.',
   denied: 'Motion access was denied. Open Settings → Apps → Safari → ' +
           'Motion & Orientation Access, turn it on, reload this page and tap Start again.',
@@ -46,6 +47,8 @@ export class ControllerApp {
   #teachPhase = null;
   #stillSince = 0;
   #previousAttitude = null;
+  #resumeStage = null;
+  #releasing = false;
 
   constructor({
     room, transport, view, calibrator, gripTeacher, wakeLock,
@@ -66,7 +69,7 @@ export class ControllerApp {
     this.view.onTeach(() => this.#beginTeaching());
     this.view.onTeachCancel(() => this.#stopTeaching('armed'));
     this.view.onRecentre(() => this.#recentre());
-    this.view.onControls(() => this.#sendFrame({ force: true }));
+    this.view.onControls(() => { if (!this.#releasing) this.#sendFrame({ force: true }); });
     this.view.onEditHandle(() => this.view.setEditing(true));
     this.view.onEditDone(() => this.view.setEditing(false));
     this.view.onEditReset(() => this.view.resetLayout());
@@ -80,14 +83,49 @@ export class ControllerApp {
     // Tell the game when the player stops looking — screen locked, another
     // app, another tab. The socket may well survive it; their attention does not.
     document.addEventListener('visibilitychange', () => {
-      this.transport.send(protocol.presence(document.visibilityState === 'visible'));
+      const visible = document.visibilityState === 'visible';
+      // A thumb that was down when the screen went away will never come up.
+      // The socket is alive, so the game gets told.
+      if (!visible) {
+        this.#releaseControls();
+        this.#sendFrame({ force: true });
+      }
+      this.transport.send(protocol.presence(visible));
     });
 
-    this.transport.on('open', () => this.view.status(SAY.waiting));
-    this.transport.on('close', () => this.view.status('Reconnecting…'));
+    this.transport.on('open', () => this.#onOpen());
+    this.transport.on('close', () => this.#onClose());
     this.transport.on('message', (msg) => this.#onMessage(msg));
     this.view.say(SAY.connecting);
     this.transport.connect();
+  }
+
+  // --- the socket comes and goes -----------------------------------------
+
+  /** Release locally; the socket is gone, so there is nothing to send to. */
+  #onClose() {
+    this.#releaseControls();
+    if (this.#stage !== 'interrupted') {
+      this.#resumeStage = this.#stage;
+      if (this.#stage === 'playing') {
+        this.#setStage('interrupted');
+        this.view.say(SAY.interrupted);
+      }
+    }
+    this.view.status('Reconnecting…');
+  }
+
+  #onOpen() {
+    this.view.status(SAY.waiting);
+    if (this.#stage !== 'interrupted') return;
+    this.#setStage(this.#resumeStage);
+    this.view.say(SAY.playing);
+    this.#sendFrame({ force: true });
+  }
+
+  #releaseControls() {
+    this.#releasing = true;                // the pad's own change events must not send
+    try { this.view.releaseControls(); } finally { this.#releasing = false; }
   }
 
   // --- the game tells us what it wants -----------------------------------
@@ -259,6 +297,7 @@ export class ControllerApp {
 
   /** Buttons send immediately; tilt is rate limited. */
   #sendFrame({ tilt = null, force = false } = {}) {
+    if (this.#stage === 'interrupted') return;     // nobody is listening
     if (!force && !this.#allowSend()) return;
     const { buttons, sticks } = this.view.controlState;
     this.transport.send(protocol.input({

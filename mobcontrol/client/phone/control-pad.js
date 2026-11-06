@@ -72,9 +72,7 @@ export class ControlPad {
     if (this.#editing === on) return;
     this.#editing = on;
     this.#root.classList.toggle('is-editing', on);
-    this.#byPointer.clear();
-    this.#drag = null;
-    this.#releaseAll();                   // never leave a control held on exit
+    this.releaseAll();                    // never leave a control held on exit
   }
 
   // --- rendering ---------------------------------------------------------
@@ -113,7 +111,10 @@ export class ControlPad {
     this.#onChange(this.state);
   }
 
-  #releaseAll() {
+  /** Let go of everything, whatever is touching it. Safe with no controls. */
+  releaseAll() {
+    this.#byPointer.clear();
+    this.#drag = null;
     let changed = false;
     for (const control of this.#controls.values()) {
       if (control.up() !== false) changed = true;
