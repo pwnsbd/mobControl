@@ -229,3 +229,92 @@ test('releaseAll with no controls mounted, or an empty list, does not throw', as
   assert.doesNotThrow(() => pad.releaseAll());
   assert.deepEqual(pad.state, { buttons: {}, sticks: {} });
 });
+
+// --- the turn-your-phone stage ---
+
+test('a landscape layout held upright shows the turn screen, with nothing held', () => {
+  const r = rig({ orientation: 'landscape', landscape: false });
+  assert.equal(r.stages.at(-1), 'rotate');
+  assert.deepEqual(r.turns, ['landscape']);
+  assert.ok(isNeutral(r.held));
+  assert.equal(r.locks.at(-1), 'on');
+});
+
+test('a landscape layout held sideways plays, and a portrait one held upright plays', () => {
+  assert.equal(rig({ orientation: 'landscape', landscape: true }).stages.at(-1), 'playing');
+  assert.equal(rig({ orientation: 'portrait', landscape: false }).stages.at(-1), 'playing');
+  const wrong = rig({ orientation: 'portrait', landscape: true });
+  assert.equal(wrong.stages.at(-1), 'rotate');
+  assert.deepEqual(wrong.turns, ['portrait']);
+});
+
+test('an any layout, or a message with no orientation field, never shows it', () => {
+  for (const orientation of ['any', undefined, 'sideways', 7]) {
+    for (const landscape of [true, false]) {
+      const r = rig({ orientation, landscape });
+      assert.equal(r.stages.at(-1), 'playing', `${orientation} ${landscape}`);
+      r.turn(!landscape);
+      assert.equal(r.stages.includes('rotate'), false, `${orientation} ${landscape}`);
+    }
+  }
+});
+
+test('turning the phone resolves the screen by itself, and back again', () => {
+  const r = rig({ orientation: 'landscape', landscape: false });
+  r.turn(true);
+  assert.equal(r.stages.at(-1), 'playing');
+  r.turn(false);
+  assert.equal(r.stages.at(-1), 'rotate');
+  r.turn(true);
+  assert.equal(r.stages.at(-1), 'playing');
+});
+
+test('turning away mid-press releases the control and tells the game', () => {
+  const r = rig({ orientation: 'landscape', landscape: true });
+  hold(r);
+  r.turn(false);
+  assert.equal(r.stages.at(-1), 'rotate');
+  assert.ok(isNeutral(r.held));
+  assert.deepEqual(inputs(r).at(-1).buttons, { fire: false });
+  assert.deepEqual(inputs(r).at(-1).sticks, { move: { x: 0, y: 0 } });
+  r.turn(true);                          // leaving it leaves the state neutral too
+  assert.equal(r.stages.at(-1), 'playing');
+  assert.ok(isNeutral(r.held));
+  assert.deepEqual(inputs(r).at(-1).buttons, { fire: false });
+});
+
+test('a turn that changes nothing sends nothing', () => {
+  const r = rig({ orientation: 'landscape', landscape: true });
+  r.turn(true);
+  assert.equal(r.sent.length, 0);
+});
+
+test('a disconnection while held the wrong way reads as disconnected, then resumes right', () => {
+  const r = rig({ orientation: 'landscape', landscape: false });
+  r.handlers.close();
+  assert.equal(r.stages.at(-1), 'interrupted');
+  assert.ok(isNeutral(r.held));
+  r.turn(true);                          // turning while disconnected must not hide that
+  assert.equal(r.stages.at(-1), 'interrupted');
+  r.handlers.open();
+  assert.equal(r.stages.at(-1), 'playing');
+  r.handlers.close();
+  r.turn(false);
+  r.handlers.open();
+  assert.equal(r.stages.at(-1), 'rotate');
+  assert.ok(isNeutral(r.held));
+});
+
+test('the turn screen does not appear before play, however the phone is held', () => {
+  const r = rig({ usesTilt: true, orientation: 'landscape', landscape: false });
+  assert.equal(r.stages.at(-1), 'ready');
+  r.turn(true);
+  r.turn(false);
+  assert.equal(r.stages.includes('rotate'), false);
+});
+
+test('a layout that stops caring about orientation ends the turn screen', () => {
+  const r = rig({ orientation: 'landscape', landscape: false });
+  r.handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt: false, controls: [] });
+  assert.equal(r.stages.at(-1), 'playing');
+});
