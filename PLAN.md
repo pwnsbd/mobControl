@@ -45,6 +45,13 @@ Each is defensible someday, none blocks a player or a developer today.
   first; developer surface area only once the thing is good to hold.
 - **2026-11-06 — no worktree agents before P0.1.** The project had no VCS at all.
 
+- **2026-11-06 — a close outside `playing` is not "interrupted".** From
+  `armed` or `teaching` the stage is left alone and only the 'Reconnecting…'
+  status shows. Input is still released. The player is mid-setup, not mid-game;
+  yanking them to an interrupted screen would be louder than the problem.
+- **2026-11-06 — tests run by glob** (`node --test "test/*.test.js"`). A bare
+  directory argument fails: `test/package.json` makes node load it as a module.
+
 ## Agent notes
 
 - This repo is a plain `git init` with no remote. Worktree builders branch from
