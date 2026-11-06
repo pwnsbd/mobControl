@@ -224,7 +224,9 @@ function normaliseControls({ buttons = [], controls = [] }) {
     id: control.id,
     type: control.type,
     label: control.label ?? (control.type === 'button' ? control.id.toUpperCase() : control.id),
-    side: control.side
+    side: control.side,
+    x: control.x,
+    y: control.y
   }));
 }
 
@@ -283,4 +285,5 @@ function defaultBasePath() {
 }
 
 export { names as mountNames, register as registerMount, DEFAULT_MOUNT } from './shared/mounts.js';
+export { layouts } from './layouts.js';
 export default PhoneController;
