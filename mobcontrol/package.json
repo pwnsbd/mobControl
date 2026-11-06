@@ -8,7 +8,7 @@
   "main": "index.js",
   "files": ["index.js", "src/", "client/"],
   "scripts": {
-    "test": "node --test test/attitude.test.js test/grip.test.js test/pad-layout.test.js test/controls.test.js test/interrupt.test.js"
+    "test": "node --test \"test/*.test.js\""
   },
   "peerDependencies": {
     "ws": "^8.0.0"

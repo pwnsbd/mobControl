@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { ControllerApp } from '../client/phone/app.js';
 import { MessageType } from '../client/shared/protocol.js';
 
-function rig() {
+function rig({ usesTilt = false } = {}) {
   const handlers = {};
   const sent = [];
   const transport = {
@@ -30,8 +30,14 @@ function rig() {
     say() {}, status() {}, showRoom() {}, showPose() {}, showControls() {},
     hintEditing() {}
   };
-  for (const name of ['onStart', 'onTeach', 'onTeachCancel', 'onRecentre',
+  const taps = {};
+  view.onStart = (fn) => { taps.start = fn; };
+  view.onTeach = (fn) => { taps.teach = fn; };
+  view.onTeachCancel = () => {};
+  view.showDial = () => {};
+  for (const name of ['onRecentre', 'onTeachCancel', 'onRecentre',
     'onEditHandle', 'onEditDone', 'onEditReset']) view[name] = () => {};
+  view.onControlsFire = () => onControls();
 
   const listeners = {};
   globalThis.document = {
@@ -44,13 +50,14 @@ function rig() {
     calibrator: { mount: 'flat', toVehicleAngles: () => null },
     gripTeacher: {}, shakeDetector: { level: 0 },
     wakeLock: { acquire: () => locks.push('on'), release: () => locks.push('off') },
-    orientationSource: {}, motionSource: {}, requestAccess: async () => ({}),
+    orientationSource: { start() {} }, motionSource: { start() {} },
+    requestAccess: async () => ({ orientation: true, motion: false }),
     sendIntervalMs: 0
   });
   app.start();
-  handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt: false, controls: [] });
+  handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt, controls: [] });
   sent.length = 0;
-  return { handlers, sent, held, stages, listeners, locks };
+  return { handlers, sent, held, stages, listeners, locks, taps, view };
 }
 
 const isNeutral = ({ buttons, sticks }) =>
@@ -93,4 +100,126 @@ test('a close before any open does not throw and releases', () => {
   r.handlers.close();
   r.handlers.close();
   assert.ok(isNeutral(r.held));
+});
+
+const hold = (r) => { r.held.buttons.fire = true; r.held.sticks.move = { x: 0.5, y: -1 }; };
+const inputs = (r) => r.sent.filter((m) => m.type === 'input');
+
+test('a held stick is released on close and on hide', () => {
+  const r = rig();
+  r.handlers.close();
+  assert.deepEqual(r.held.sticks.move, { x: 0, y: 0 });
+  hold(r);
+  r.handlers.open();
+  document.visibilityState = 'hidden';
+  r.sent.length = 0;
+  r.listeners.visibilitychange();
+  assert.deepEqual(r.held.sticks.move, { x: 0, y: 0 });
+  assert.deepEqual(inputs(r)[0].sticks, { move: { x: 0, y: 0 } });
+});
+
+test('two closes then one open still resumes play', () => {
+  const r = rig();
+  r.handlers.close();
+  r.handlers.close();
+  r.handlers.open();
+  assert.equal(r.stages.at(-1), 'playing');
+});
+
+test('nothing is sent while interrupted, even if the page is hidden', () => {
+  const r = rig();
+  r.handlers.close();
+  hold(r);
+  r.view.onControlsFire();               // a stray pad change event
+  document.visibilityState = 'hidden';
+  r.listeners.visibilitychange();
+  assert.equal(inputs(r).length, 0);
+  assert.ok(isNeutral(r.held));
+});
+
+test('a close while armed releases input, does not claim playing, and survives reopen', async () => {
+  const r = rig({ usesTilt: true });
+  await r.taps.start();
+  assert.equal(r.stages.at(-1), 'armed');
+  r.handlers.close();
+  assert.ok(isNeutral(r.held));
+  r.handlers.open();
+  assert.notEqual(r.stages.at(-1), 'playing');
+  assert.notEqual(r.stages.at(-1), 'interrupted');
+  assert.equal(r.locks.at(-1), 'off');
+});
+
+test('a close while teaching releases input and does not jump to playing on reopen', async () => {
+  const r = rig({ usesTilt: true });
+  await r.taps.start();
+  r.taps.teach();
+  assert.equal(r.stages.at(-1), 'teaching');
+  r.handlers.close();
+  assert.ok(isNeutral(r.held));
+  r.handlers.open();
+  assert.equal(r.stages.at(-1), 'teaching');
+});
+
+// --- the real ControlPad (fake DOM) ---
+
+const fakeEl = () => {
+  const el = {
+    dataset: {}, style: {}, listeners: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener(n, fn) { el.listeners[n] = fn; },
+    append() {}, setAttribute() {}, querySelector: () => null,
+    replaceChildren() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 })
+  };
+  return el;
+};
+const winListeners = {};
+const padWorld = () => {
+  globalThis.window = { addEventListener: (n, fn) => { winListeners[n] = fn; } };
+  globalThis.document = { createElement: fakeEl };
+};
+
+const SPECS = [
+  { id: 'fire', type: 'button' },
+  { id: 'move', type: 'stick' }
+];
+const down = (el, pointerId, x, y) => el.listeners.pointerdown({
+  pointerId, clientX: x, clientY: y, preventDefault() {}
+});
+
+test('releaseAll neutralises a held button and a held stick, and reports it', async () => {
+  padWorld();
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const root = fakeEl();
+  const pad = new ControlPad(root);
+  const els = [];
+  document.createElement = () => { const e = fakeEl(); els.push(e); return e; };
+  pad.setControls(SPECS, {});
+  const [fire, move] = els.filter((e) => e.listeners.pointerdown);
+  let changes = 0;
+  pad.onChange(() => { changes += 1; });
+
+  down(fire, 1, 50, 50);
+  down(move, 2, 100, 50);                 // stick centre is (50,50), radius 50 -> x = 1
+  assert.equal(pad.state.buttons.fire, true);
+  assert.deepEqual(pad.state.sticks.move, { x: 1, y: 0 });
+
+  changes = 0;
+  pad.releaseAll();
+  assert.deepEqual(pad.state, { buttons: { fire: false }, sticks: { move: { x: 0, y: 0 } } });
+  assert.ok(changes >= 1);
+
+  // a late pointerup for a pointer that was already released must be harmless
+  winListeners.pointerup({ pointerId: 1 });
+  assert.equal(pad.state.buttons.fire, false);
+});
+
+test('releaseAll with no controls mounted, or an empty list, does not throw', async () => {
+  padWorld();
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const pad = new ControlPad(fakeEl());
+  assert.doesNotThrow(() => pad.releaseAll());
+  pad.setControls([], {});
+  assert.doesNotThrow(() => pad.releaseAll());
+  assert.deepEqual(pad.state, { buttons: {}, sticks: {} });
 });
