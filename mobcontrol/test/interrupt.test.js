@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { ControllerApp } from '../client/phone/app.js';
 import { MessageType } from '../client/shared/protocol.js';
 
-function rig({ usesTilt = false } = {}) {
+function rig({ usesTilt = false, orientation, landscape = true } = {}) {
   const handlers = {};
   const sent = [];
   const transport = {
@@ -18,6 +18,8 @@ function rig({ usesTilt = false } = {}) {
   const held = { buttons: { fire: true }, sticks: { move: { x: 0.5, y: -1 } } };
   const stages = [];
   let onControls = () => {};
+  let turned = () => {};
+  const turns = [];
   const view = {
     controlState: held,
     releaseControls() {
@@ -28,7 +30,10 @@ function rig({ usesTilt = false } = {}) {
     set stage(s) { stages.push(s); },
     onControls: (fn) => { onControls = fn; },
     say() {}, status() {}, showRoom() {}, showPose() {}, showControls() {},
-    hintEditing() {}
+    hintEditing() {},
+    isLandscape: landscape,
+    onOrientation: (fn) => { turned = fn; },
+    showTurn: (want) => turns.push(want)
   };
   const taps = {};
   view.onStart = (fn) => { taps.start = fn; };
@@ -55,9 +60,10 @@ function rig({ usesTilt = false } = {}) {
     sendIntervalMs: 0
   });
   app.start();
-  handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt, controls: [] });
+  handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt, controls: [], orientation });
   sent.length = 0;
-  return { handlers, sent, held, stages, listeners, locks, taps, view };
+  const turn = (isLandscape) => { view.isLandscape = isLandscape; turned(); };
+  return { handlers, sent, held, stages, listeners, locks, taps, view, turn, turns };
 }
 
 const isNeutral = ({ buttons, sticks }) =>

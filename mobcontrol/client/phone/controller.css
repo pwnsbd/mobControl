@@ -139,6 +139,25 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 .link:active { background: var(--surface); }
 .link[hidden] { display: none; }
 
+/* --- turn your phone ----------------------------------------------------- */
+
+#rotate-text { color: var(--text); font-size: 17px; font-weight: 500; max-width: 24ch; text-align: center; }
+.turn-icon { width: 96px; height: 96px; }
+.turn-phone { fill: none; stroke: var(--text); stroke-width: 3; }
+.turn-dot { fill: var(--amber); }
+/* The icon is drawn upright and swings to the way it should be held. A phone
+   wanted upright starts on its side. */
+#rotate[data-want="landscape"] { --from: 0deg;  --to: -90deg; }
+#rotate[data-want="portrait"]  { --from: 90deg; --to: 0deg; }
+.turn-icon { transform: rotate(var(--to)); }
+@media (prefers-reduced-motion: no-preference) {
+  .turn-icon { animation: turn 2.2s ease-in-out infinite; }
+}
+@keyframes turn {
+  0%, 20%  { transform: rotate(var(--from)); }
+  60%, 100% { transform: rotate(var(--to)); }
+}
+
 /* --- the pose diagram ---------------------------------------------------- */
 
 #pose { width: 170px; height: 104px; }
