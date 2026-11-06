@@ -9,10 +9,10 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
 ## Now
 
 - [x] **P0.1 — version control.** `git init`, `.gitignore`, baseline commit. (dcc473e)
-- [ ] **P0.2 — release held input on interruption.** Owner: builder.
+- [x] **P0.2 — release held input on interruption.** Owner: builder.
       Files: `phone/app.js`, `phone/view.js`, `phone/control-pad.js`, `test/`.
       Contract: `docs/contracts/phone-interrupt.md`.
-      Done when: tests prove nothing stays held across close / hide / reconnect.
+      Done when: tests prove nothing stays held across close / hide / reconnect. (46 tests green)
 
 ## Next (visual pass — the point of the exercise)
 

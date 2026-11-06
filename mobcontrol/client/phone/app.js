@@ -119,7 +119,7 @@ export class ControllerApp {
     this.view.status(SAY.waiting);
     if (this.#stage !== 'interrupted') return;
     this.#setStage(this.#resumeStage);
-    this.view.say(SAY.playing);
+    this.view.say(this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
     this.#sendFrame({ force: true });
   }
 
