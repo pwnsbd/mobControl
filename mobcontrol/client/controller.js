@@ -228,7 +228,9 @@ function normaliseControls({ buttons = [], controls = [] }) {
     label: control.label ?? (control.type === 'button' ? control.id.toUpperCase() : control.id),
     side: control.side,
     x: control.x,
-    y: control.y
+    y: control.y,
+    size: control.size,
+    accent: control.accent
   }));
 }
 

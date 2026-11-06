@@ -15,6 +15,8 @@
 const DEADZONE = 0.22;       // of the base radius, before a dpad commits
 const SNAP = Math.PI / 4;    // eight directions
 
+const ACCENTS = new Set(['amber', 'blue', 'red', 'green']);
+
 export function create(spec) {
   return spec.type === 'button' ? new ButtonControl(spec) : new VectorControl(spec);
 }
@@ -23,12 +25,15 @@ class ButtonControl {
   type = 'button';
   value = false;
 
-  constructor({ id, label }) {
+  constructor({ id, label, accent }) {
     this.id = id;
     this.element = document.createElement('button');
     this.element.className = 'control control--button';
     this.element.type = 'button';
     this.element.dataset.id = id;
+    // A face button may carry one of the four console accents. Anything else
+    // is ignored and the button stays the default sage.
+    if (ACCENTS.has(accent)) this.element.dataset.accent = accent;
     this.element.textContent = label ?? id.toUpperCase();
   }
 

@@ -12,15 +12,18 @@
 // about 289pt tall, and a small button is 0.23 of the short edge, so the north
 // and south slots need a third of the pad's height between their centres or
 // they touch. Portrait is roomier and inherits the same numbers.
+// Tuned against landscape alone, which is the only way this preset is played:
+// a 776x289 pad and an 86pt small button leave ~22pt between neighbours.
 const DIAMOND = [
-  { x: 0.55, y: 0.615, size: 's' },   // west
-  { x: 0.70, y: 0.45, size: 's' },    // north
-  { x: 0.70, y: 0.78, size: 's' },    // south
-  { x: 0.85, y: 0.615, size: 's' }    // east
+  { x: 0.58, y: 0.615, size: 's', accent: 'amber' },   // west
+  { x: 0.70, y: 0.42, size: 's', accent: 'blue' },     // north
+  { x: 0.70, y: 0.81, size: 's', accent: 'red' },      // south
+  { x: 0.82, y: 0.615, size: 's', accent: 'green' }    // east
 ];
 
 const GAMEPAD_BUTTONS = ['y', 'x', 'b', 'a'];
 const DPAD_BUTTONS = ['b', 'a'];
+const DPAD_SLOTS = [{ accent: 'red' }, { accent: 'green' }];
 
 /** A label ('FIRE') or { id, label }, as the developer wrote it. */
 function toButton(entry, index) {
@@ -83,7 +86,7 @@ export const layouts = Object.freeze({
 
   /** Left d-pad, right pair `b` `a` in a row. */
   dpad(options = {}) {
-    return { controls: dpadWithButtons(options, DPAD_BUTTONS, []), orientation: 'any' };
+    return { controls: dpadWithButtons(options, DPAD_BUTTONS, DPAD_SLOTS), orientation: 'any' };
   }
 });
 

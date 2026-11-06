@@ -164,7 +164,7 @@ export class ControllerView {
 
     // The stylesheet keys its palette and layout off this; no logic lives here.
     if (this.#root.documentElement) this.#root.documentElement.dataset.stage = stage;
-    this.#el.setup.hidden = playing || teaching;
+    this.#el.setup.hidden = playing || teaching || turning;
     this.#el.rotate.hidden = !turning;
     this.#el.teaching.hidden = !teaching;
     this.#el.recentre.hidden = !playing;
