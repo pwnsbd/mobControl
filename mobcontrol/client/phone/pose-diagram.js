@@ -23,8 +23,8 @@ export function render(mount, { arrow = false } = {}) {
   return `
     <defs>
       <linearGradient id="poseScreen" x1="0" y1="0" x2="0.4" y2="1">
-        <stop offset="0%" stop-color="#3a3049"/>
-        <stop offset="100%" stop-color="#241e2f"/>
+        <stop offset="0%" stop-color="#1D3B34"/>
+        <stop offset="100%" stop-color="#102220"/>
       </linearGradient>
     </defs>
     <rect class="body" x="${x}" y="${y}" width="${width}" height="${height}" rx="11"/>
