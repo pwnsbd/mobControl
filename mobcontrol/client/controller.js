@@ -254,6 +254,7 @@ function normaliseControls({ buttons = [], controls = [] }) {
     y: control.y,
     size: control.size,
     accent: control.accent,
+    shape: control.shape,
     haptic: control.haptic
   }));
 }

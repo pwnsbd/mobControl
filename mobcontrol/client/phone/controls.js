@@ -30,13 +30,14 @@ class ButtonControl {
   #pulsed = false;
   #flash;
 
-  constructor({ id, label, accent, haptic }) {
+  constructor({ id, label, accent, haptic, shape }) {
     this.id = id;
     this.#haptic = haptic === true;
     this.element = document.createElement('button');
     this.element.className = 'control control--button';
     this.element.type = 'button';
     this.element.dataset.id = id;
+    if (shape === 'rounded-rect') this.element.dataset.shape = shape;
     // A face button may carry one of the four console accents. Anything else
     // is ignored and the button stays the default sage.
     if (ACCENTS.has(accent)) this.element.dataset.accent = accent;

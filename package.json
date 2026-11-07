@@ -1,15 +1,17 @@
 {
   "name": "mobcontrol-workspace",
   "private": true,
-  "description": "mobControl — the package, and two games built on it.",
+  "description": "mobControl — the package and example games.",
   "license": "MIT",
   "workspaces": [
     "mobcontrol",
-    "examples/*"
+    "examples/*",
+    "tools/mobcontrol-mcp"
   ],
   "scripts": {
-    "test": "npm test --workspace mobcontrol",
+    "test": "npm test --workspace mobcontrol && npm test --workspace mobcontrol-mcp",
     "flyer": "npm start --workspace tilt-flyer",
-    "cube": "npm start --workspace cube-run"
+    "cube": "npm start --workspace cube-run",
+    "dodge": "npm start --workspace block-dodge"
   }
 }

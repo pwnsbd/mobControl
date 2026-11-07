@@ -8,7 +8,8 @@ export const CONTROL_TYPES = Object.freeze(['button', 'stick', 'dpad']);
 const sides = Object.freeze(['left', 'right']);
 const sizes = Object.freeze(['s', 'm', 'l']);
 const accents = Object.freeze(['yellow', 'amber', 'blue', 'red', 'green']);
-const controlFields = new Set(['id', 'type', 'label', 'side', 'x', 'y', 'size', 'accent', 'haptic']);
+const buttonShapes = Object.freeze(['circle', 'rounded-rect']);
+const controlFields = new Set(['id', 'type', 'label', 'side', 'x', 'y', 'size', 'accent', 'haptic', 'shape']);
 const configFields = new Set(['mount', 'axes', 'motion', 'motionWithJoystick', 'buttons', 'controls', 'orientation', 'recommendedOrientation', 'deadzone', 'range', 'smoothing', 'allowLayoutEdit', 'debug', 'persistRoom']);
 const runtimeFields = new Set(['autoConnect', 'basePath', 'qrRenderer', 'room', 'transport']);
 
@@ -34,11 +35,12 @@ export const configurationContract = {
     axes: { type: 'object', values: [...SIGNALS], description: 'Game axis name mapped to yaw, pitch, or roll.' },
     motion: { type: 'boolean', default: false, description: 'Request accelerometer and gyroscope readings.' },
     motionWithJoystick: { type: 'boolean', default: false, description: 'Keep the joystick available while motion is on.' },
-    buttons: { type: 'array', items: 'string | {id,label,side,x,y,size,accent,haptic?}' },
-    controls: { type: 'array', items: '{id,type,label,side,x,y,size,accent,haptic?}' },
+    buttons: { type: 'array', items: 'string | {id,label,side,x,y,size,accent,haptic?,shape?}' },
+    controls: { type: 'array', items: '{id,type,label,side,x,y,size,accent,haptic?,shape?}' },
     side: { type: 'string', values: [...sides] },
     size: { type: 'string', values: [...sizes] },
     accent: { type: 'string', values: [...accents] },
+    shape: { type: 'string', values: [...buttonShapes], default: 'circle', description: 'Button shape. Use rounded-rect for Play/Pause and other menu actions.' },
     orientation: { type: 'string', values: [...ORIENTATIONS], default: 'landscape' },
     recommendedOrientation: { type: 'string', values: ['portrait', 'landscape'] },
     mount: { type: 'string', values: mountNames(), default: 'landscape-left', extensible: true },
@@ -53,11 +55,16 @@ export const configurationContract = {
     haptic: { type: 'boolean', default: false, description: 'Request a short pulse and flash on each button press.' },
     vibrate: { method: 'pad.vibrate(duration)', unit: 'ms', minimum: 1, maximum: 200, default: 30 }
   },
+  connection: {
+    available: 'pad.connected && pad.watching',
+    events: ['pair', 'unpair', 'suspend', 'resume'],
+    recovery: 'If the phone is the active input, pause on unpair or suspend and let the player reconnect or continue with another input.'
+  },
   inputs: {
     axes: 'Declared names receive normalized -1..1 tilt values.',
-    buttons: 'Button control IDs receive held booleans and press/release events.',
-    controls: 'Stick and dpad IDs receive normalized {x,y} values; dpad snaps.',
-    shake: 'Phone shake level is exposed as pad.shake.',
+    buttons: 'Read pad.button[id] while held, or listen for press/release events with {id}.',
+    controls: 'Read pad.stick[id].x and .y from -1 to 1. D-pad directions snap.',
+    shake: 'Read pad.shake from 0 to 1. Trigger one action when it crosses a threshold.',
     motion: {
       property: 'pad.motion',
       coordinates: 'device',
@@ -119,6 +126,9 @@ export function validateConfiguration(config) {
     if (item.size !== undefined && !sizes.includes(item.size)) issue(`${path}.size`, `Choose one of: ${sizes.join(', ')}.`);
     if (item.accent !== undefined && !accents.includes(item.accent)) issue(`${path}.accent`, `Choose one of: ${accents.join(', ')}.`);
     if (item.haptic !== undefined && typeof item.haptic !== 'boolean') issue(`${path}.haptic`, 'Expected a boolean.');
+    if (item.shape !== undefined && (type !== 'button' || !buttonShapes.includes(item.shape))) {
+      issue(`${path}.shape`, 'Buttons support circle or rounded-rect.');
+    }
   };
   if (Array.isArray(config.buttons)) config.buttons.forEach((item, i) => checkControl(item, `buttons[${i}]`, true));
   if (Array.isArray(config.controls)) config.controls.forEach((item, i) => checkControl(item, `controls[${i}]`));

@@ -1,0 +1,13 @@
+{
+  "name": "block-dodge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A one-screen dodge game with optional phone steering.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "mobcontrol": "*"
+  }
+}

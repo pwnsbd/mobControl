@@ -96,7 +96,10 @@ export class ControlPad {
       const { x, y } = clampPosition(entry, entry.size, width / height, diameter / width);
       control.element.style.left = `${x * 100}%`;
       control.element.style.top = `${y * 100}%`;
-      control.element.style.width = `${diameter}px`;
+      // Fit the corners of a 2:1 button inside the same footprint used by pinch resizing.
+      const buttonWidth = control.element.dataset.shape === 'rounded-rect'
+        ? diameter / Math.hypot(1, 0.5) : diameter;
+      control.element.style.width = `${buttonWidth}px`;
     }
   }
 

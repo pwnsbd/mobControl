@@ -109,6 +109,17 @@ test('a declared size survives all the way to the phone default layout', () => {
   assert.equal(placed.jump.size, SMALL_SIZE);
 });
 
+test('a rounded rectangle is an opt-in button shape on the phone', () => {
+  const options = { buttons: [{ id: 'pause', shape: 'rounded-rect' }, 'jump'] };
+  assert.deepEqual(validateConfiguration(options), []);
+  const [pause, jump] = phoneReceives(gameAnnounces(options));
+  assert.equal(pause.shape, 'rounded-rect');
+  assert.equal(jump.shape, undefined);
+  assert.equal(validateConfiguration({
+    controls: [{ id: 'steer', type: 'stick', shape: 'rounded-rect' }]
+  })[0].path, 'controls[0].shape');
+});
+
 test('every field a preset sets on a control survives the crossing', () => {
   const { controls } = layouts.gamepad();
   const wire = gameAnnounces({ controls });

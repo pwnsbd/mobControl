@@ -70,9 +70,9 @@ export function defaultLayout(controls, orientation) {
     const classic = ['Y', 'X', 'B', 'A'].map((label) =>
       buttons.find((button) => String(button.label ?? '').toUpperCase() === label));
     const ordered = buttons.length === 4 && classic.every(Boolean) ? classic : buttons;
-    const entries = ordered.map(({ id }, index) => {
+    const entries = ordered.map(({ id, shape }, index) => {
       const [x, y] = slots[buttons.length][index];
-      return [id, { x, y, size: buttons.length === 1 ? 'm' : 's' }];
+      return [id, { x, y, size: buttons.length === 1 && shape !== 'rounded-rect' ? 'm' : 's' }];
     });
     const movement = controls.find(({ type }) => type !== 'button');
     if (movement) entries.push([movement.id, { x: 0.23, y: center, size: 'l' }]);
@@ -88,7 +88,8 @@ export function defaultLayout(controls, orientation) {
     const hinted = isFraction(control.x) && isFraction(control.y);
     // A cluster of four needs smaller parts than a lone button, so size is a
     // hint too. Anything that is not a known size falls back to the type's.
-    const size = SIZES.includes(control.size) ? control.size : byType.size;
+    const defaultSize = control.type === 'button' && control.shape === 'rounded-rect' ? 's' : byType.size;
+    const size = SIZES.includes(control.size) ? control.size : defaultSize;
     layout[control.id] = hinted
       ? { x: clamp(control.x, 0.14, 0.86), y: clamp(control.y, 0.14, 0.86), size }
       : { x: clamp(x, 0.14, 0.86), y: DEFAULT_Y, size };

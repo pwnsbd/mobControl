@@ -4,6 +4,8 @@ Turn a phone into a controller for your web game. Players scan a QR code and use
 
 You choose the controls and bind them to your game. mobControl serves the phone interface, pairs the devices, and sends input over WebSockets.
 
+Coding agents can start with the [integration guide](mobcontrol/AGENT_README.md), also included at the root of the npm package.
+
 ## Quick start
 
 Once mobControl is published, install it in a Node project. This example uses Express.
@@ -94,6 +96,8 @@ When a game offers a joystick and motion as alternatives, the phone starts with 
 
 Import `configurationContract` and `validateConfiguration` from `/__phone/controller.js` in the browser, or from `mobcontrol/client/shared/config.js` in Node using an ES module import. The contract lists supported options and input bindings. Pass the same options you would give to `new PhoneController(options)` to `validateConfiguration(options)`. It returns an empty array on success or issues with a field path and a message.
 
+For coding agents, the [optional MCP companion](tools/mobcontrol-mcp/README.md) lists capabilities and validates a controller configuration against the mobControl version installed in the game.
+
 ## Try the demos from this repository
 
 Run `npm install` from the repository root, then choose a demo.
@@ -102,6 +106,7 @@ Run `npm install` from the repository root, then choose a demo.
 | --- | --- |
 | `npm run cube` | [Cube Run](examples/cube-run/README.md), a platformer on port 3200. |
 | `npm run flyer` | [Tilt Flyer](examples/tilt-flyer/README.md), a motion-controlled flight demo on port 3000. |
+| `npm run dodge` | [Block Dodge](examples/block-dodge/README.md), a keyboard-first game with phone reconnect and fallback on port 3300. |
 
 Touch controls work over local HTTP. Use HTTPS for motion controls and open the HTTPS URL on your computer before scanning the QR. For public hosting, enable WebSocket upgrades and add room access controls. The built-in relay lets a new connection replace an existing connection in the same room and role.
 

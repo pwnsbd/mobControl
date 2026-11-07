@@ -49,9 +49,9 @@ development tooling. Games and phones use the existing runtime API.
 2. **Simulate input in tests.** An in-memory phone connection sends input
    frames through the real game controller. It verifies movement, held input,
    and press/release events without a handset.
-3. **Expose discovery and validation over MCP.** Keep MCP dependencies out of
-   the game runtime and preserve the existing JavaScript API. Consider a
-   live input tool when agents need to test a running game.
+3. **Expose discovery and validation over MCP.** The optional local companion
+   reads the game's installed contract and runs its validator. It keeps MCP
+   dependencies out of the game runtime.
 
 Release check: install the packed module into a fresh game. Ask an agent to
 add steering, hold-to-brake, and tap-to-boost while preserving keyboard input.
