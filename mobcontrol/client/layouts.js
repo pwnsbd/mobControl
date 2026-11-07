@@ -5,20 +5,13 @@
 // hand. Nothing here remembers anything, and nothing depends on a fragment
 // having come from here. Spread it, or take just `.controls`.
 
-// Normalized default positions (fractions of the pad, inside pad-layout's
-// 0.14..0.86 clamp) for a four-button diamond on the right half. Slot order
-// follows the default ids: y west, x north, b south, a east.
-// Sized and spaced from the WORST case, which is landscape: the pad is then
-// about 289pt tall, and a small button is 0.23 of the short edge, so the north
-// and south slots need a third of the pad's height between their centres or
-// they touch. Portrait is roomier and inherits the same numbers.
-// Tuned against landscape alone, which is the only way this preset is played:
-// a 776x289 pad and an 86pt small button leave ~22pt between neighbours.
+// Normalized positions for the existing landscape diamond. Preset semantics
+// stay unchanged while the developer/player product contract is discussed.
 const DIAMOND = [
-  { x: 0.58, y: 0.615, size: 's', accent: 'amber' },   // west
-  { x: 0.70, y: 0.42, size: 's', accent: 'blue' },     // north
-  { x: 0.70, y: 0.81, size: 's', accent: 'red' },      // south
-  { x: 0.82, y: 0.615, size: 's', accent: 'green' }    // east
+  { x: 0.58, y: 0.615, size: 's', accent: 'amber' },
+  { x: 0.70, y: 0.42, size: 's', accent: 'blue' },
+  { x: 0.70, y: 0.81, size: 's', accent: 'red' },
+  { x: 0.82, y: 0.615, size: 's', accent: 'green' }
 ];
 
 const GAMEPAD_BUTTONS = ['y', 'x', 'b', 'a'];
@@ -68,6 +61,31 @@ function dpadWithButtons(options, defaults, slots) {
 }
 
 export const layouts = Object.freeze({
+  /** One movement input and up to four actions, arranged by the phone. */
+  simple({ movement = 'none', buttons = [], recommendedOrientation = 'landscape' } = {}) {
+    if (!['none', 'stick', 'dpad', 'tilt'].includes(movement)) {
+      throw new TypeError('Choose movement: none, stick, dpad, or tilt.');
+    }
+    if (!Array.isArray(buttons) || buttons.length > 4) {
+      throw new TypeError('The simple layout supports up to four action buttons.');
+    }
+    if (!['portrait', 'landscape'].includes(recommendedOrientation)) {
+      throw new TypeError('Choose a recommended orientation: portrait or landscape.');
+    }
+    const accents = new Map([['A', 'green'], ['B', 'red'], ['X', 'blue'], ['Y', 'yellow']]);
+    const controls = buttons.map((entry, index) => {
+      const button = toButton(entry, index);
+      return { ...button, type: 'button', accent: accents.get(button.label.toUpperCase()) };
+    });
+    if (movement === 'stick' || movement === 'dpad') {
+      controls.unshift({ id: 'move', type: movement, label: 'Move' });
+    }
+    if (new Set(controls.map(({ id }) => id)).size !== controls.length) {
+      throw new TypeError('Give every control a unique ID.');
+    }
+    return { controls, axes: movement === 'tilt' ? { x: 'roll' } : {}, recommendedOrientation };
+  },
+
   /** Left d-pad, right diamond of four buttons (y x b a). */
   gamepad(options = {}) {
     return { controls: dpadWithButtons(options, GAMEPAD_BUTTONS, DIAMOND), orientation: 'landscape' };

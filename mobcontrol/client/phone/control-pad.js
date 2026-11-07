@@ -31,6 +31,9 @@ export class ControlPad {
     window.addEventListener('pointerup', (e) => this.#release(e));
     window.addEventListener('pointercancel', (e) => this.#release(e));
     window.addEventListener('pointermove', (e) => this.#move(e));
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => this.#paint()).observe(root);
+    }
   }
 
   onChange(fn) { this.#onChange = fn; }
@@ -78,15 +81,15 @@ export class ControlPad {
   // --- rendering ---------------------------------------------------------
 
   #paint() {
+    const { width, height } = this.#root.getBoundingClientRect();
+    if (!width || !height) return;
     for (const [id, control] of this.#controls) {
-      const { x, y, size } = this.#layout[id] ?? { x: 0.5, y: 0.5, size: 'm' };
+      const entry = this.#layout[id] ?? { x: 0.5, y: 0.5, size: 'm' };
+      const diameter = controlDiameter(entry.size, width, height);
+      const { x, y } = clampPosition(entry, entry.size, width / height, diameter / width);
       control.element.style.left = `${x * 100}%`;
       control.element.style.top = `${y * 100}%`;
-      // Sized off the short edge, not the pad's width: a control is held by a
-      // thumb, and a thumb does not grow when the phone is turned sideways.
-      // A width percentage plus aspect-ratio:1 made landscape controls taller
-      // than the pad itself.
-      control.element.style.width = `calc(${SIZE_FRACTION[size]} * 100vmin)`;
+      control.element.style.width = `${diameter}px`;
     }
   }
 
@@ -107,7 +110,7 @@ export class ControlPad {
   }
 
   #release(event) {
-    if (this.#drag?.pointerId === event.pointerId) return this.#endDrag();
+    if (this.#drag?.pointerId === event.pointerId) return this.#endDrag(event.type === 'pointercancel');
     const control = this.#byPointer.get(event.pointerId);
     if (!control) return;
     this.#byPointer.delete(event.pointerId);
@@ -118,7 +121,7 @@ export class ControlPad {
   /** Let go of everything, whatever is touching it. Safe with no controls. */
   releaseAll() {
     this.#byPointer.clear();
-    this.#drag = null;
+    if (this.#drag) this.#endDrag(true);
     let changed = false;
     for (const control of this.#controls.values()) {
       if (control.up() !== false) changed = true;
@@ -129,12 +132,14 @@ export class ControlPad {
   // --- rearranging -------------------------------------------------------
 
   #beginDrag(event, id) {
+    if (this.#drag) return;
     this.#drag = {
       id,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       moved: false,
+      original: this.#layout[id],
       box: this.#root.getBoundingClientRect()
     };
     this.#controls.get(id)?.element.classList.add('is-dragging');
@@ -153,23 +158,30 @@ export class ControlPad {
       ...clampPosition(
         { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height },
         size,
-        box.width / box.height
+        box.width / box.height,
+        controlDiameter(size, box.width, box.height) / box.width
       ),
       size
     };
     this.#paint();
   }
 
-  #endDrag() {
-    const { id, moved, box } = this.#drag;
+  #endDrag(cancelled) {
+    const { id, moved, box, original } = this.#drag;
     this.#controls.get(id)?.element.classList.remove('is-dragging');
     this.#drag = null;
+    if (cancelled) {
+      this.#layout[id] = original;
+      this.#paint();
+      return;
+    }
 
     if (!moved) {
       // A tap in edit mode cycles the size, so resizing needs no extra chrome.
       const size = nextSize(this.#layout[id].size);
       this.#layout[id] = {
-        ...clampPosition(this.#layout[id], size, box.width / box.height),
+        ...clampPosition(this.#layout[id], size, box.width / box.height,
+          controlDiameter(size, box.width, box.height) / box.width),
         size
       };
       this.#paint();
@@ -179,3 +191,8 @@ export class ControlPad {
 }
 
 const pointOf = (event) => ({ x: event.clientX, y: event.clientY });
+
+function controlDiameter(size, width, height) {
+  const shortEdge = Math.min(window.innerWidth, window.innerHeight, width, height / 0.76);
+  return SIZE_FRACTION[size] * shortEdge;
+}

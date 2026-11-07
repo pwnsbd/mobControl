@@ -10,6 +10,26 @@ import { defaultLayout } from '../client/phone/pad-layout.js';
 const ALL = ['gamepad', 'dualStick', 'dpad'];
 const ids = (controls) => controls.map((c) => c.id);
 
+test('simple layouts keep action IDs stable across movement choices and place up to four buttons', () => {
+  const actions = ['a', 'b', 'x', 'y'].map((label) => ({ id: `action-${label}`, label }));
+  for (const movement of ['none', 'stick', 'dpad', 'tilt']) {
+    for (let count = 0; count <= 4; count++) {
+      const { controls, axes } = layouts.simple({ movement, buttons: actions.slice(0, count) });
+      assert.deepEqual(ids(controls.filter(({ type }) => type === 'button')), ids(actions.slice(0, count)));
+      assert.equal(controls.find(({ id }) => id === 'move')?.type,
+        movement === 'stick' || movement === 'dpad' ? movement : undefined);
+      assert.deepEqual(axes, movement === 'tilt' ? { x: 'roll' } : {});
+      for (const orientation of ['portrait', 'landscape']) {
+        const placed = defaultLayout(controls, orientation);
+        const positions = Object.values(placed).map(({ x, y }) => `${x},${y}`);
+        assert.equal(new Set(positions).size, controls.length);
+      }
+    }
+  }
+  assert.throws(() => layouts.simple({ buttons: ['1', '2', '3', '4', '5'] }), /four/);
+  assert.throws(() => layouts.simple({ movement: 'stick', buttons: ['move'] }), /unique ID/);
+});
+
 test('layouts is importable from the module that exports PhoneController', () => {
   assert.equal(typeof controllerModule.PhoneController, 'function');
   assert.equal(controllerModule.layouts, layouts);

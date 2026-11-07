@@ -28,12 +28,34 @@ const BY_TYPE = {
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Same controls, same key — so each game remembers its own arrangement. */
-export function layoutKey(controls) {
-  return STORAGE_PREFIX + controls.map((c) => `${c.id}:${c.type}`).sort().join(',');
+export function layoutKey(controls, orientation) {
+  const key = STORAGE_PREFIX + controls.map((c) => `${c.id}:${c.type}`).sort().join(',');
+  return orientation ? `${key}:${orientation}` : key;
 }
 
 /** Start from the control's type and the developer's hint; the player moves it. */
-export function defaultLayout(controls) {
+export function defaultLayout(controls, orientation) {
+  const buttons = controls.filter(({ type }) => type === 'button');
+  if (orientation && buttons.length <= 4 && controls.length - buttons.length <= 1
+      && controls.every(({ side, x, y, size }) => side == null && x == null && y == null && size == null)) {
+    const center = 0.53;
+    const step = orientation === 'portrait' ? 0.17 : 0.26;
+    const left = [0.58, center];
+    const right = [0.86, center];
+    const top = [0.72, center - step];
+    const bottom = [0.72, center + step];
+    const slots = [[], [[0.76, center]], [left, right], [top, left, right], [top, left, right, bottom]];
+    const classic = ['Y', 'X', 'B', 'A'].map((label) =>
+      buttons.find((button) => String(button.label ?? '').toUpperCase() === label));
+    const ordered = buttons.length === 4 && classic.every(Boolean) ? classic : buttons;
+    const entries = ordered.map(({ id }, index) => {
+      const [x, y] = slots[buttons.length][index];
+      return [id, { x, y, size: buttons.length === 1 ? 'm' : 's' }];
+    });
+    const movement = controls.find(({ type }) => type !== 'button');
+    if (movement) entries.push([movement.id, { x: 0.23, y: center, size: 'l' }]);
+    return Object.fromEntries(entries);
+  }
   const seen = { left: 0, right: 0 };
   const layout = {};
   for (const control of controls) {
@@ -61,9 +83,9 @@ function isFraction(v) {
  * Keep a control fully inside the pad.
  * @param {number} aspect pad width / pad height
  */
-export function clampPosition({ x, y }, size, aspect) {
-  const halfX = SIZE_FRACTION[size] / 2;
-  const halfY = (SIZE_FRACTION[size] * aspect) / 2;
+export function clampPosition({ x, y }, size, aspect, widthFraction = SIZE_FRACTION[size]) {
+  const halfX = widthFraction / 2;
+  const halfY = (widthFraction * aspect) / 2;
   return {
     x: clamp(x, halfX, 1 - halfX),
     y: clamp(y, Math.min(halfY, 0.5), Math.max(1 - halfY, 0.5))
@@ -75,8 +97,8 @@ export function nextSize(size) {
 }
 
 /** Drop anything that is not a control this game declared, and fill the gaps. */
-export function reconcile(stored, controls) {
-  const fallback = defaultLayout(controls);
+export function reconcile(stored, controls, orientation) {
+  const fallback = defaultLayout(controls, orientation);
   if (!stored) return fallback;
   const layout = {};
   for (const control of controls) {
@@ -105,22 +127,25 @@ export class PadLayoutStore {
     this.#storage = storage;
   }
 
-  load(controls) {
+  load(controls, orientation) {
     if (!controls.length) return {};
     let stored = null;
     try {
-      stored = JSON.parse(this.#storage?.getItem(layoutKey(controls)) ?? 'null');
+      const saved = this.#storage?.getItem(layoutKey(controls, orientation))
+        ?? this.#storage?.getItem(layoutKey(controls));
+      stored = JSON.parse(saved ?? 'null');
     } catch { /* unreadable or corrupt — fall back to the defaults */ }
-    return reconcile(stored, controls);
+    return reconcile(stored, controls, orientation);
   }
 
-  save(controls, layout) {
+  save(controls, layout, orientation) {
     try {
-      this.#storage?.setItem(layoutKey(controls), JSON.stringify(layout));
+      this.#storage?.setItem(layoutKey(controls, orientation), JSON.stringify(layout));
     } catch { /* not important enough to break play over */ }
   }
 
-  forget(controls) {
+  forget(controls, orientation) {
+    if (orientation) return this.save(controls, null, orientation);
     try {
       this.#storage?.removeItem(layoutKey(controls));
     } catch { /* ignore */ }

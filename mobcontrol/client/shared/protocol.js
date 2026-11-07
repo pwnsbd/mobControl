@@ -46,13 +46,15 @@ export const normaliseOrientation = (value) => (ORIENTATIONS.includes(value) ? v
  * @param {boolean} [layout.allowLayoutEdit] let the player rearrange the controls
  */
 export const layout = ({
-  mount, usesTilt, controls, orientation, debug = false, allowLayoutEdit = true
+  mount, usesTilt, controls, orientation, recommendedOrientation, debug = false, allowLayoutEdit = true
 }) => ({
   type: MessageType.LAYOUT,
   mount,
   usesTilt,
   controls,
   orientation: normaliseOrientation(orientation),
+  ...(recommendedOrientation === 'portrait' || recommendedOrientation === 'landscape'
+    ? { recommendedOrientation } : {}),
   debug,
   allowLayoutEdit
 });

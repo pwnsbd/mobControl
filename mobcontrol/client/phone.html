@@ -12,13 +12,14 @@
   <header>
     <span id="room" class="pill"></span>
     <span id="conn" class="conn" role="status" aria-label="Connection"></span>
-    <button id="edit-handle" class="handle" hidden
-            aria-label="Rearrange buttons">&#8942;&#8942;</button>
+    <button id="edit-handle" class="handle" hidden aria-controls="edit-bar"
+            aria-expanded="false">Layout</button>
     <button id="recentre" class="link" hidden>Recentre</button>
   </header>
 
   <div id="edit-bar" hidden>
     <span>Drag to move &middot; tap to resize</span>
+    <span id="layout-orientation"></span>
     <button id="edit-reset" class="link">Reset</button>
     <button id="edit-done" class="chip">Done</button>
   </div>
@@ -54,7 +55,14 @@
   </section>
 
   <!-- playing -->
-  <div id="tilt" hidden><i id="tilt-dot"></i></div>
+  <div id="tilt" hidden aria-label="Steering">
+    <span id="tilt-label">Steering centred</span>
+    <span class="tilt-wave" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </span>
+    <i id="tilt-dot" aria-hidden="true"></i>
+  </div>
   <div id="pad" hidden></div>
 
   <!-- diagnostics, only when the game asks -->

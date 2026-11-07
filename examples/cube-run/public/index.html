@@ -51,9 +51,7 @@
 <div id="pairing">
   <div>
     <h1>Cube Run</h1>
-    <p>Scan with your phone, hold it sideways and flat &mdash; screen up, top edge to your
-       <strong>left</strong> &mdash; and tap <strong>Calibrate</strong>.
-       Tilt to move or use the <strong>D-pad</strong>, and tap <strong>JUMP</strong>.</p>
+    <p id="pair-instructions">Scan with your phone. Use the stick to move and tap A to jump.</p>
     <div id="qr"></div>
     <div id="code"></div>
     <p id="warning" hidden></p>
@@ -63,24 +61,30 @@
 </div>
 
 <script type="module">
-import { PhoneController } from '/__phone/controller.js';
+import { PhoneController, layouts } from '/__phone/controller.js';
 
 // ===========================================================================
 // The controller. This is the entire integration: declare the layout, then
 // read pad.axis.x and pad.button.jump like any gamepad.
 // ===========================================================================
+const requestedMovement = new URLSearchParams(location.search).get('movement');
+const movement = ['stick', 'dpad', 'tilt'].includes(requestedMovement) ? requestedMovement : 'stick';
+const moveHint = { stick: 'Use the stick to move', dpad: 'Use the D-pad to move', tilt: 'Tilt to move' }[movement];
 const pad = new PhoneController({
-  mount: 'landscape-left',                    // held sideways, screen up, head to the left
-  axes: { x: 'roll' },                        // tilt the near edge down to go left/right
-  controls: [
-    { type: 'dpad', id: 'move' },             // ...or use the D-pad instead
-    { type: 'button', id: 'jump', label: 'JUMP' }
-  ],
+  ...layouts.simple({
+    movement,
+    recommendedOrientation: 'landscape',
+    buttons: [{ id: 'jump', label: 'A' }]
+  }),
+  mount: 'landscape-left',
   deadzone: 4,
   range: 26                                   // 26 degrees of tilt = full speed
 });
 
 const pairing = document.getElementById('pairing');
+document.getElementById('pair-instructions').textContent = movement === 'tilt'
+  ? 'Scan with your phone, enable motion, and calibrate. Tilt to move and tap A to jump.'
+  : `Scan with your phone. ${moveHint} and tap A to jump.`;
 document.getElementById('code').textContent = pad.room;
 document.getElementById('link').textContent = pad.pairUrl;
 pad.mountQR(document.getElementById('qr'), 200);
@@ -107,7 +111,7 @@ function pauseWith(text) {
   banner.hidden = false;
 }
 function offerResume() {
-  if (paused) banner.textContent = 'Press any key or tap JUMP to resume';
+  if (paused) banner.textContent = 'Press any key or tap A to resume';
 }
 function resume() {
   paused = false;
@@ -153,8 +157,7 @@ function steering() {
   const left = keys.has('ArrowLeft') || keys.has('KeyA');
   const right = keys.has('ArrowRight') || keys.has('KeyD');
   if (left !== right) return right ? 1 : -1;  // keyboard
-  if (pad.stick.move.x) return pad.stick.move.x;   // D-pad, -1 / 0 / 1
-  return pad.axis.x;                          // tilt, -1..1
+  return pad.stick.move?.x ?? pad.axis.x ?? 0;
 }
 const jumpHeld = () =>
   pad.button.jump || keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW');
@@ -357,7 +360,7 @@ function draw() {
     `${collected}/${coins.length} coins   ${time.toFixed(1)}s   deaths ${deaths}` +
     (won ? '   — FINISHED!' : '');
   hint.textContent = pad.connected
-    ? (pad.calibrated ? 'tilt to move · JUMP on the phone' : 'calibrate on the phone')
+    ? (movement === 'tilt' && !pad.calibrated ? 'calibrate on the phone' : `${moveHint} · A to jump`)
     : 'arrow keys + space — or scan the code to use your phone';
 }
 

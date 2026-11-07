@@ -15,7 +15,7 @@
 const DEADZONE = 0.22;       // of the base radius, before a dpad commits
 const SNAP = Math.PI / 4;    // eight directions
 
-const ACCENTS = new Set(['amber', 'blue', 'red', 'green']);
+const ACCENTS = new Set(['yellow', 'amber', 'blue', 'red', 'green']);
 
 export function create(spec) {
   return spec.type === 'button' ? new ButtonControl(spec) : new VectorControl(spec);

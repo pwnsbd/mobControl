@@ -58,6 +58,7 @@ export class PhoneController {
       usesTilt: this.#mapper.names.length > 0,
       controls,
       orientation: settings.orientation,     // unknown values become 'any' on the wire
+      recommendedOrientation: settings.recommendedOrientation,
       debug: settings.debug,
       allowLayoutEdit: settings.allowLayoutEdit
     });

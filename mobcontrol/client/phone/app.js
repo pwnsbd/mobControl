@@ -156,7 +156,7 @@ export class ControllerApp {
     this.view.canTeach = layout.usesTilt;
     this.view.editable = layout.allowLayoutEdit !== false;
     this.view.showPose(mounts.get(layout.mount));
-    this.view.showControls(layout.controls ?? []);
+    this.view.showControls(layout.controls ?? [], layout.recommendedOrientation);
     this.view.status('');
 
     // A game with no tilt needs no sensors: no permission prompt, no

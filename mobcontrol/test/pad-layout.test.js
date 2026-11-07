@@ -108,6 +108,23 @@ test('a layout survives being saved and loaded again', () => {
   assert.deepEqual(store.load(BUTTONS), moved);
 });
 
+test('orientation edits and resets are independent and legacy layouts remain readable', () => {
+  const values = new Map();
+  const store = new PadLayoutStore({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value)
+  });
+  const legacy = { ...defaultLayout(BUTTONS), jump: { x: 0.7, y: 0.6, size: 's' } };
+  const portrait = { ...legacy, jump: { x: 0.5, y: 0.7, size: 'l' } };
+  store.save(BUTTONS, legacy);
+  assert.deepEqual(store.load(BUTTONS, 'landscape'), legacy);
+  store.save(BUTTONS, portrait, 'portrait');
+  assert.deepEqual(store.load(BUTTONS, 'portrait'), portrait);
+  store.forget(BUTTONS, 'landscape');
+  assert.deepEqual(store.load(BUTTONS, 'landscape'), defaultLayout(BUTTONS, 'landscape'));
+  assert.deepEqual(store.load(BUTTONS, 'portrait'), portrait);
+});
+
 test('forgetting a layout returns the player to the defaults', () => {
   const store = new PadLayoutStore(fakeStorage());
   store.save(BUTTONS, { jump: { x: 0.1, y: 0.1, size: 's' }, fire: { x: 0.9, y: 0.9, size: 's' } });

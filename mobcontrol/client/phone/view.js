@@ -13,7 +13,6 @@ const START_LABEL = {
   connecting: 'Start', ready: 'Start', armed: 'Calibrate', interrupted: 'Start', blocked: 'Start'
 };
 const DIAL_CIRCUMFERENCE = 327;        // 2 * pi * r, r = 52
-const DOUBLE_TAP_MS = 450;
 
 export class ControllerView {
   #el;
@@ -21,7 +20,10 @@ export class ControllerView {
   #root;
   #store = new PadLayoutStore();
   #controls = [];
+  #layoutOrientation;
+  #recommendedOrientation;
   #tiltVisible = false;
+  #tiltDirection = '';
   #canEdit = false;
   #editing = false;
 
@@ -33,10 +35,11 @@ export class ControllerView {
       pose: byId('pose'), message: byId('message'), status: byId('status'),
       start: byId('start'), teach: byId('teach'), teachCancel: byId('teach-cancel'),
       teachText: byId('teach-text'), dialFill: byId('dial-fill'), dialValue: byId('dial-value'),
-      tilt: byId('tilt'), tiltDot: byId('tilt-dot'), pad: byId('pad'),
+      tilt: byId('tilt'), tiltDot: byId('tilt-dot'), tiltLabel: byId('tilt-label'), pad: byId('pad'),
       recentre: byId('recentre'), readout: byId('readout'),
       editHandle: byId('edit-handle'), editBar: byId('edit-bar'),
       editDone: byId('edit-done'), editReset: byId('edit-reset'),
+      layoutOrientation: byId('layout-orientation'),
       yaw: byId('yaw'), pitch: byId('pitch'), roll: byId('roll'), shake: byId('shake')
     };
     this.#pad = new ControlPad(this.#el.pad);
@@ -50,32 +53,25 @@ export class ControllerView {
   onEditDone(fn) { this.#el.editDone.addEventListener('click', fn); }
   onEditReset(fn) { this.#el.editReset.addEventListener('click', fn); }
 
-  /**
-   * Entering edit mode has to be deliberate — a stray thumb must never do it —
-   * so it takes a double tap on a handle that is nowhere near the controls.
-   */
-  onEditHandle(fn) {
-    let lastTap = 0;
-    this.#el.editHandle.addEventListener('click', () => {
-      const now = Date.now();
-      if (now - lastTap < DOUBLE_TAP_MS) {
-        lastTap = 0;
-        fn();
-      } else {
-        lastTap = now;
-        this.status('Double-tap to rearrange');
-      }
-    });
-  }
+  onEditHandle(fn) { this.#el.editHandle.addEventListener('click', fn); }
 
   /** True while the screen is wider than it is tall. */
   get isLandscape() { return window.innerWidth > window.innerHeight; }
 
   /** Called when the phone is turned (or the window otherwise changes shape). */
   onOrientation(fn) {
-    window.addEventListener('resize', fn);
-    window.addEventListener('orientationchange', fn);
+    const changed = () => {
+      if (this.#layoutOrientation !== this.#screenOrientation && this.#layoutOrientation) {
+        this.#pad.releaseAll();
+        this.#loadLayout();
+      }
+      fn();
+    };
+    window.addEventListener('resize', changed);
+    window.addEventListener('orientationchange', changed);
   }
+
+  get #screenOrientation() { return this.isLandscape ? 'landscape' : 'portrait'; }
 
   /** Say which way to turn the phone. @param {'landscape'|'portrait'} want */
   showTurn(want) {
@@ -97,10 +93,24 @@ export class ControllerView {
   status(text) { this.#el.status.textContent = text ?? ''; }
   set canTeach(on) { this.#el.teach.hidden = !on; }
 
-  showControls(controls) {
+  showControls(controls, recommendedOrientation) {
     this.#controls = controls;
-    this.#pad.setControls(controls, this.#store.load(controls));
-    this.#pad.onLayoutChange((layout) => this.#store.save(controls, layout));
+    this.#recommendedOrientation = recommendedOrientation;
+    this.#loadLayout();
+  }
+
+  #loadLayout() {
+    const orientation = this.#screenOrientation;
+    const controls = this.#controls;
+    this.#layoutOrientation = orientation;
+    this.#pad.setControls(controls, this.#store.load(controls, orientation));
+    this.#pad.onLayoutChange((layout) => this.#store.save(controls, layout, orientation));
+    const label = this.#el.layoutOrientation;
+    label.textContent = orientation === 'portrait' ? 'Portrait' : 'Landscape';
+    if (this.#recommendedOrientation && this.#recommendedOrientation !== orientation) {
+      label.textContent += this.#recommendedOrientation === 'landscape'
+        ? ' · Landscape recommended' : ' · Portrait recommended';
+    }
   }
 
   /** Whether this game allows the player to rearrange its controls. */
@@ -110,21 +120,23 @@ export class ControllerView {
     this.#editing = on && this.#canEdit;
     this.#pad.editing = this.#editing;
     this.#el.editBar.hidden = !this.#editing;
+    this.#el.editHandle.setAttribute('aria-expanded', String(this.#editing));
+    this.#el.editHandle.disabled = this.#editing;
     this.#el.editHandle.classList.toggle('is-active', this.#editing);
     this.status(this.#editing ? '' : 'Layout saved on this phone.');
   }
 
-  /** Tell the player the handle is there — nobody discovers a double-tap alone. */
+  /** Tell the player where to customize this controller. */
   hintEditing() {
     if (!this.#canEdit || !this.#controls.length) return;
-    this.status('Double-tap ⋮⋮ at the top to move or resize the controls');
+    this.status('Use Layout to move or resize controls');
     this.#el.editHandle.classList.add('is-new');
     setTimeout(() => this.#el.editHandle.classList.remove('is-new'), 5500);
   }
 
   resetLayout() {
-    this.#store.forget(this.#controls);
-    this.showControls(this.#controls);
+    this.#store.forget(this.#controls, this.#layoutOrientation);
+    this.#loadLayout();
   }
 
   /** The teaching dial: a prompt, and how far round the gesture has got. */
@@ -137,7 +149,16 @@ export class ControllerView {
 
   /** Live feedback that tilting is doing something. -1..1. */
   showTilt(value) {
-    this.#el.tiltDot.style.transform = `translateX(${value * 160}px)`;
+    const amount = Math.max(-1, Math.min(1, Number(value) || 0));
+    this.#el.tiltDot.style.transform = `translateX(${amount * 140}px)`;
+    this.#el.tiltDot.style.opacity = String(0.58 + Math.abs(amount) * 0.42);
+    const direction = Math.abs(amount) < 0.08 ? 'centred' : amount < 0 ? 'left' : 'right';
+    if (direction !== this.#tiltDirection) {
+      this.#tiltDirection = direction;
+      this.#el.tiltLabel.textContent = direction === 'centred'
+        ? 'Steering centred'
+        : `Steering ${direction}`;
+    }
   }
 
   showAngles({ yaw, pitch, roll }) {
@@ -167,7 +188,7 @@ export class ControllerView {
     this.#el.setup.hidden = playing || teaching || turning;
     this.#el.rotate.hidden = !turning;
     this.#el.teaching.hidden = !teaching;
-    this.#el.recentre.hidden = !playing;
+    this.#el.recentre.hidden = !(playing && this.#tiltVisible);
     this.#el.tilt.hidden = !(playing && this.#tiltVisible);
     this.#el.pad.hidden = !(playing && hasControls);
     this.#el.editHandle.hidden = !(playing && hasControls && this.#canEdit);

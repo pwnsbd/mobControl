@@ -1,14 +1,16 @@
 # Cube Run
 
 A one-level cube platformer, built to find out whether **mobControl** is genuinely drop-in.
-Tilt the phone left and right to move, tap **JUMP**.
+Move with the analog stick and tap **A** to jump. Rotate the phone to switch
+between portrait and landscape, and open **Layout** to move or resize the controls.
 
 ```bash
 npm run cube       # from the project root, then http://localhost:3200
 ```
 
-Playable immediately with **← → and Space**. To use a phone, scan the QR on the game
-screen — over HTTPS, so in local development run a tunnel first:
+Use **← → and Space** on the keyboard. To use a phone, open the game on a
+network address the phone can reach, then scan the QR. The stick and D-pad use
+touch input and work on a shared local network. Tilt mode requires HTTPS:
 
 ```bash
 npx.cmd cloudflared tunnel --url http://localhost:3200
@@ -27,20 +29,21 @@ The game:
 
 ```js
 const pad = new PhoneController({
-  mount: 'landscape-left',                   // held sideways, screen up, head to the left
-  axes: { x: 'roll' },                       // tilt left/right
-  buttons: [{ id: 'jump', label: 'JUMP' }],
-  deadzone: 4,
-  range: 26                                  // 26 degrees of tilt = full speed
+  ...layouts.simple({
+    movement: 'stick',
+    recommendedOrientation: 'landscape',
+    buttons: [{ id: 'jump', label: 'A' }]
+  })
 });
 
 pad.on('press', ({ id }) => { if (id === 'jump') jumpBuffer = JUMP_BUFFER; });
 ```
 
-...and then two reads inside the existing loop — `pad.axis.x` for steering and
-`pad.button.jump` for a held jump. **No phone-side code was written for this game.** The
-JUMP button, its label, the pose diagram and the calibration prompt all came from that
-`buttons` declaration.
+The game reads `pad.stick.move.x` for movement and `pad.button.jump` for a held
+jump. The label and position can change independently of the `jump` ID.
+
+Open `/?movement=dpad` to try a D-pad or `/?movement=tilt` for motion steering
+with the steering wave. Each mode uses the same jump binding.
 
 The keyboard and the phone feed the same two values, so the physics never asks where a
 press came from:
@@ -48,7 +51,7 @@ press came from:
 ```js
 function steering() {
   if (left !== right) return right ? 1 : -1;
-  return pad.axis.x;
+  return pad.stick.move?.x ?? pad.axis.x ?? 0;
 }
 ```
 
