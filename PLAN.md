@@ -36,6 +36,27 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
       contract, its own tests.
 - [ ] **P1.6 — visible edit menu.** Replace the double-tap hint.
 
+## Agent tooling for 0.1.0
+
+Keep the game integration to server setup, a controller declaration, and
+bindings to existing game actions. The local MCP companion is optional
+development tooling. Games and phones use the existing runtime API.
+
+1. **Discover and validate.** The package includes a versioned contract for
+   presets, custom controls, and their inputs. Runtime setup and development
+   validation share the supported control types. Validation reports invalid
+   fields and duplicate IDs.
+2. **Simulate input in tests.** An in-memory phone connection sends input
+   frames through the real game controller. It verifies movement, held input,
+   and press/release events without a handset.
+3. **Expose discovery and validation over MCP.** Keep MCP dependencies out of
+   the game runtime and preserve the existing JavaScript API. Consider a
+   live input tool when agents need to test a running game.
+
+Release check: install the packed module into a fresh game. Ask an agent to
+add steering, hold-to-brake, and tap-to-boost while preserving keyboard input.
+Verify the game actions, then check pairing and controller feel on a real phone.
+
 ## Parked (justify before starting)
 
 Each is defensible someday, none blocks a player or a developer today.

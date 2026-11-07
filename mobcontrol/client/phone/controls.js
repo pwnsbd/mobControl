@@ -12,6 +12,8 @@
 // So a game reading pad.stick.move does not care which of the last two the
 // player is using, and swapping one for the other costs a single word.
 
+import { pulse } from './haptics.js';
+
 const DEADZONE = 0.22;       // of the base radius, before a dpad commits
 const SNAP = Math.PI / 4;    // eight directions
 
@@ -24,9 +26,13 @@ export function create(spec) {
 class ButtonControl {
   type = 'button';
   value = false;
+  #haptic;
+  #pulsed = false;
+  #flash;
 
-  constructor({ id, label, accent }) {
+  constructor({ id, label, accent, haptic }) {
     this.id = id;
+    this.#haptic = haptic === true;
     this.element = document.createElement('button');
     this.element.className = 'control control--button';
     this.element.type = 'button';
@@ -37,9 +43,24 @@ class ButtonControl {
     this.element.textContent = label ?? id.toUpperCase();
   }
 
-  down() { this.#set(true); }
+  down() {
+    if (!this.#set(true)) return false;
+    if (this.#haptic) {
+      this.#pulsed = pulse();
+      this.#flash?.cancel();
+      this.#flash = this.element.animate?.(
+        [{ filter: 'brightness(1.45)' }, { filter: 'brightness(1)' }], 110
+      );
+    }
+    return true;
+  }
   move() { /* a button does not care where the thumb went */ }
-  up() { this.#set(false); }
+  up(tapped = false) {
+    if (!this.#set(false)) return false;
+    // A first touch may only grant vibration permission on pointer-up.
+    if (tapped && this.#haptic && !this.#pulsed) pulse();
+    return true;
+  }
 
   #set(down) {
     if (this.value === down) return false;
@@ -54,6 +75,7 @@ class VectorControl {
   #knob;
   #centre = { x: 0, y: 0 };
   #radius = 1;
+  #rotated = false;
 
   constructor({ id, type, label }) {
     this.id = id;
@@ -68,18 +90,20 @@ class VectorControl {
     if (label) this.element.setAttribute('aria-label', label);
   }
 
-  down(point) {
+  down(point, rotated = false) {
     const box = this.element.getBoundingClientRect();
     this.#centre = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
     this.#radius = box.width / 2;
+    this.#rotated = rotated;
     this.element.classList.add('is-active');
     return this.move(point);
   }
 
   move(point) {
-    const dx = (point.x - this.#centre.x) / this.#radius;
-    const dy = (point.y - this.#centre.y) / this.#radius;
-    const raw = clampToUnit({ x: dx, y: dy });
+    const { x, y } = this.#centre;
+    const raw = clampToUnit(this.#rotated
+      ? { x: (point.y - y) / this.#radius, y: (x - point.x) / this.#radius }
+      : { x: (point.x - x) / this.#radius, y: (point.y - y) / this.#radius });
     const next = this.type === 'dpad' ? snapToEight(raw) : raw;
     return this.#set(next, raw);
   }

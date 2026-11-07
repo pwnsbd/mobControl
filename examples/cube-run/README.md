@@ -1,8 +1,10 @@
 # Cube Run
 
 A one-level cube platformer, built to find out whether **mobControl** is genuinely drop-in.
-Move with the analog stick and tap **A** to jump. Rotate the phone to switch
-between portrait and landscape, and open **Layout** to move or resize the controls.
+Move with the analog stick and tap **A** to jump. Hold the phone sideways with
+its top edge to your left. The controller shows its landscape layout even with
+auto-rotate locked. Open **Layout** to drag a control or pinch it with two
+fingers to resize it.
 
 ```bash
 npm run cube       # from the project root, then http://localhost:3200
@@ -31,7 +33,6 @@ The game:
 const pad = new PhoneController({
   ...layouts.simple({
     movement: 'stick',
-    recommendedOrientation: 'landscape',
     buttons: [{ id: 'jump', label: 'A' }]
   })
 });
@@ -42,8 +43,17 @@ pad.on('press', ({ id }) => { if (id === 'jump') jumpBuffer = JUMP_BUFFER; });
 The game reads `pad.stick.move.x` for movement and `pad.button.jump` for a held
 jump. The label and position can change independently of the `jump` ID.
 
-Open `/?movement=dpad` to try a D-pad or `/?movement=tilt` for motion steering
-with the steering wave. Each mode uses the same jump binding.
+Open `/?movement=dpad` to try a D-pad. Open `/?movement=tilt` to switch
+between the stick and tilt using the phone’s **Motion** toggle. Add
+`&combine=1` to try stick and tilt together after granting motion access.
+Each mode uses the same jump binding.
+
+Open `/?motion=1` over HTTPS to see live controller-relative acceleration and
+gyro readings in the game HUD while using the touch controls. The displayed
+`right`, `up`, and `out` directions follow the controller's screen orientation.
+Try with phone rotation lock on and off, rotating the phone in each case. Motion
+uses the same `motion: true` setup; see the root README for the API and raw
+physical-axis readings.
 
 The keyboard and the phone feed the same two values, so the physics never asks where a
 press came from:

@@ -3,7 +3,7 @@
 //
 // Two modes, deliberately exclusive:
 //   playing — a pointer down on a control operates it
-//   editing — a pointer down on a control drags it; a tap resizes it
+//   editing — drag a control with one finger or resize it with two
 //
 // Pointer events rather than touch events, so one implementation covers a
 // thumb, several thumbs at once, and a mouse during development. What each
@@ -11,9 +11,9 @@
 // pointers.
 
 import * as controls from './controls.js';
-import { SIZE_FRACTION, clampPosition, nextSize } from './pad-layout.js';
+import { clampPosition, maxControlDiameter, sizeFraction } from './pad-layout.js';
 
-const TAP_SLOP_PX = 7;        // moved less than this and it was a tap, not a drag
+const DRAG_SLOP_PX = 7;
 
 export class ControlPad {
   #root;
@@ -23,11 +23,18 @@ export class ControlPad {
   #byPointer = new Map();
   #drag = null;
   #editing = false;
+  rotated = false;
   #onChange = () => {};
   #onLayoutChange = () => {};
 
   constructor(root) {
     this.#root = root;
+    // Some mobile browsers still zoom on a rapid double tap. Pad controls
+    // use pointer events, so the browser's touch-end action can be cancelled.
+    root.addEventListener('touchend', (event) => {
+      if (event.cancelable) event.preventDefault();
+    }, { passive: false });
+    root.addEventListener('pointerdown', (event) => this.#beginPinch(event));
     window.addEventListener('pointerup', (e) => this.#release(e));
     window.addEventListener('pointercancel', (e) => this.#release(e));
     window.addEventListener('pointermove', (e) => this.#move(e));
@@ -81,7 +88,7 @@ export class ControlPad {
   // --- rendering ---------------------------------------------------------
 
   #paint() {
-    const { width, height } = this.#root.getBoundingClientRect();
+    const { width, height } = this.#layoutBox();
     if (!width || !height) return;
     for (const [id, control] of this.#controls) {
       const entry = this.#layout[id] ?? { x: 0.5, y: 0.5, size: 'm' };
@@ -99,22 +106,33 @@ export class ControlPad {
     event.preventDefault();               // no scrolling, no double-tap zoom
     if (this.#editing) return this.#beginDrag(event, control.id);
     if (this.#byPointer.has(event.pointerId)) return;
+    if ([...this.#byPointer.values()].includes(control)) return;
     this.#byPointer.set(event.pointerId, control);
-    if (control.down(pointOf(event)) !== false) this.#onChange(this.state);
+    if (control.down(pointOf(event), this.rotated) !== false) this.#onChange(this.state);
   }
 
   #move(event) {
-    if (this.#drag?.pointerId === event.pointerId) return this.#dragTo(event);
+    const drag = this.#drag;
+    if (drag?.pinch?.pointerId === event.pointerId) {
+      drag.pinch.point = pointOf(event);
+      return this.#resize();
+    }
+    if (drag?.pointerId === event.pointerId) {
+      drag.point = pointOf(event);
+      return drag.pinch ? this.#resize() : this.#dragTo(event);
+    }
     const control = this.#byPointer.get(event.pointerId);
     if (control && control.move(pointOf(event))) this.#onChange(this.state);
   }
 
   #release(event) {
-    if (this.#drag?.pointerId === event.pointerId) return this.#endDrag(event.type === 'pointercancel');
+    if (this.#drag?.pointerId === event.pointerId || this.#drag?.pinch?.pointerId === event.pointerId) {
+      return this.#endDrag(event.type === 'pointercancel');
+    }
     const control = this.#byPointer.get(event.pointerId);
     if (!control) return;
     this.#byPointer.delete(event.pointerId);
-    control.up();
+    control.up(event.type !== 'pointercancel');
     this.#onChange(this.state);
   }
 
@@ -136,27 +154,30 @@ export class ControlPad {
     this.#drag = {
       id,
       pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      start: pointOf(event),
+      point: pointOf(event),
+      touch: event.pointerType === 'touch',
       moved: false,
       original: this.#layout[id],
-      box: this.#root.getBoundingClientRect()
+      box: this.#layoutBox()
     };
     this.#controls.get(id)?.element.classList.add('is-dragging');
   }
 
   #dragTo(event) {
     const drag = this.#drag;
-    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > TAP_SLOP_PX) {
+    if (distance(drag.point, drag.start) > DRAG_SLOP_PX) {
       drag.moved = true;
     }
     if (!drag.moved) return;
 
     const { box } = drag;
     const { size } = this.#layout[drag.id];
+    const x = this.rotated ? event.clientY - box.top : event.clientX - box.left;
+    const y = this.rotated ? box.right - event.clientX : event.clientY - box.top;
     this.#layout[drag.id] = {
       ...clampPosition(
-        { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height },
+        { x: x / box.width, y: y / box.height },
         size,
         box.width / box.height,
         controlDiameter(size, box.width, box.height) / box.width
@@ -166,8 +187,48 @@ export class ControlPad {
     this.#paint();
   }
 
+  #beginPinch(event) {
+    const drag = this.#drag;
+    if (!drag?.touch || drag.pinch || event.pointerType !== 'touch' || drag.pointerId === event.pointerId) return;
+    const point = pointOf(event);
+    const span = distance(drag.point, point);
+    const { box, id } = drag;
+    if (!span || !box.width || !box.height) return;
+    const bounds = (entry) => {
+      const diameter = controlDiameter(entry.size, box.width, box.height);
+      return {
+        ...clampPosition(entry, entry.size, box.width / box.height, diameter / box.width),
+        diameter
+      };
+    };
+    const center = bounds(this.#layout[id]);
+    const neighbors = Object.entries(this.#layout)
+      .filter(([other]) => other !== id)
+      .map(([, entry]) => bounds(entry));
+    event.preventDefault();
+    drag.pinch = {
+      pointerId: event.pointerId, point, span, center,
+      limit: maxControlDiameter(center, box, neighbors),
+      scale: controlScale(box.width, box.height)
+    };
+  }
+
+  #resize() {
+    const drag = this.#drag;
+    const { point, span, center, limit, scale } = drag.pinch;
+    if (limit < 1) return;
+    const diameter = center.diameter * distance(drag.point, point) / span;
+    this.#layout[drag.id] = {
+      x: center.x,
+      y: center.y,
+      size: Math.min(limit, Math.max(1, diameter)) / scale
+    };
+    drag.moved = true;
+    this.#paint();
+  }
+
   #endDrag(cancelled) {
-    const { id, moved, box, original } = this.#drag;
+    const { id, moved, original } = this.#drag;
     this.#controls.get(id)?.element.classList.remove('is-dragging');
     this.#drag = null;
     if (cancelled) {
@@ -176,23 +237,24 @@ export class ControlPad {
       return;
     }
 
-    if (!moved) {
-      // A tap in edit mode cycles the size, so resizing needs no extra chrome.
-      const size = nextSize(this.#layout[id].size);
-      this.#layout[id] = {
-        ...clampPosition(this.#layout[id], size, box.width / box.height,
-          controlDiameter(size, box.width, box.height) / box.width),
-        size
-      };
-      this.#paint();
-    }
-    this.#onLayoutChange(this.layout);
+    if (moved) this.#onLayoutChange(this.layout);
+  }
+
+  #layoutBox() {
+    const { left, top, width, height } = this.#root.getBoundingClientRect();
+    return this.rotated
+      ? { left, top, right: left + width, width: height, height: width }
+      : { left, top, width, height };
   }
 }
 
 const pointOf = (event) => ({ x: event.clientX, y: event.clientY });
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function controlDiameter(size, width, height) {
-  const shortEdge = Math.min(window.innerWidth, window.innerHeight, width, height / 0.76);
-  return SIZE_FRACTION[size] * shortEdge;
+  return Math.min(width, height, sizeFraction(size) * controlScale(width, height));
+}
+
+function controlScale(width, height) {
+  return Math.min(window.innerWidth, window.innerHeight, width, height / 0.76);
 }

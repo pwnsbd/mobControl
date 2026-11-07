@@ -13,6 +13,28 @@ export const SIZES = ['s', 'm', 'l'];
 /** Control diameter, as a fraction of the pad's WIDTH. */
 export const SIZE_FRACTION = Object.freeze({ s: 0.23, m: 0.3, l: 0.38 });
 
+/** Resolve a preset or an explicitly stored width fraction. */
+export function sizeFraction(size) {
+  if (typeof size === 'number') return Number.isFinite(size) && size > 0 ? size : undefined;
+  return SIZES.includes(size) ? SIZE_FRACTION[size] : undefined;
+}
+
+/** Largest circular control that fits within the pad and clears its neighbors. */
+export function maxControlDiameter(center, box, neighbors = []) {
+  const { width, height } = box;
+  let maximum = Math.max(0, Math.min(
+    2 * center.x * width, 2 * (1 - center.x) * width,
+    2 * center.y * height, 2 * (1 - center.y) * height
+  ));
+  for (const neighbor of neighbors) {
+    const dx = (center.x - neighbor.x) * width;
+    const dy = (center.y - neighbor.y) * height;
+    const clearRadius = Math.hypot(dx, dy) - neighbor.diameter / 2 - 8;
+    maximum = Math.min(maximum, 2 * clearRadius);
+  }
+  return Math.max(0, maximum);
+}
+
 const STORAGE_PREFIX = 'mobcontrol:pad:';
 const DEFAULT_Y = 0.72;
 const EDGE_X = 0.76;
@@ -83,17 +105,13 @@ function isFraction(v) {
  * Keep a control fully inside the pad.
  * @param {number} aspect pad width / pad height
  */
-export function clampPosition({ x, y }, size, aspect, widthFraction = SIZE_FRACTION[size]) {
+export function clampPosition({ x, y }, size, aspect, widthFraction = sizeFraction(size)) {
   const halfX = widthFraction / 2;
   const halfY = (widthFraction * aspect) / 2;
   return {
     x: clamp(x, halfX, 1 - halfX),
     y: clamp(y, Math.min(halfY, 0.5), Math.max(1 - halfY, 0.5))
   };
-}
-
-export function nextSize(size) {
-  return SIZES[(SIZES.indexOf(size) + 1) % SIZES.length];
 }
 
 /** Drop anything that is not a control this game declared, and fill the gaps. */
@@ -112,7 +130,7 @@ function isUsable(entry) {
   return Boolean(entry)
     && Number.isFinite(entry.x) && entry.x >= 0 && entry.x <= 1
     && Number.isFinite(entry.y) && entry.y >= 0 && entry.y <= 1
-    && SIZES.includes(entry.size);
+    && sizeFraction(entry.size) !== undefined;
 }
 
 /**

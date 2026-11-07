@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  SIZE_FRACTION, layoutKey, defaultLayout, clampPosition, nextSize, reconcile,
+  SIZE_FRACTION, sizeFraction, maxControlDiameter, layoutKey, defaultLayout, clampPosition, reconcile,
   PadLayoutStore
 } from '../client/phone/pad-layout.js';
 
@@ -81,10 +81,22 @@ test('a button cannot be dragged off the pad', () => {
   assert.deepEqual(inside, { x: 0.5, y: 0.5 }, 'the middle is always allowed');
 });
 
-test('sizes cycle round', () => {
-  assert.equal(nextSize('s'), 'm');
-  assert.equal(nextSize('m'), 'l');
-  assert.equal(nextSize('l'), 's');
+test('numeric size fractions resolve alongside presets', () => {
+  assert.equal(sizeFraction('m'), SIZE_FRACTION.m);
+  assert.equal(sizeFraction(0.41), 0.41);
+  assert.equal(sizeFraction(0), undefined);
+  assert.equal(sizeFraction(Infinity), undefined);
+});
+
+test('maximum diameter respects edges and diagonal neighbor clearance', () => {
+  assert.equal(maxControlDiameter({ x: 0.5, y: 0.5 }, { width: 200, height: 100 }), 100);
+  const diagonal = maxControlDiameter({ x: 0.5, y: 0.5 }, { width: 200, height: 100 }, [
+    { x: 0.65, y: 0.9, diameter: 10 }
+  ]);
+  assert.ok(Math.abs(diagonal - 74) < 1e-9);
+  assert.equal(maxControlDiameter({ x: 0.5, y: 0.5 }, { width: 200, height: 100 }, [
+    { x: 0.5, y: 0.5, diameter: 20 }
+  ]), 0);
 });
 
 test('a stored layout for different buttons is discarded, not trusted', () => {
@@ -103,7 +115,7 @@ test('corrupt entries fall back instead of breaking the pad', () => {
 
 test('a layout survives being saved and loaded again', () => {
   const store = new PadLayoutStore(fakeStorage());
-  const moved = { jump: { x: 0.2, y: 0.4, size: 'l' }, fire: { x: 0.8, y: 0.6, size: 's' } };
+  const moved = { jump: { x: 0.2, y: 0.4, size: 0.41 }, fire: { x: 0.8, y: 0.6, size: 's' } };
   store.save(BUTTONS, moved);
   assert.deepEqual(store.load(BUTTONS), moved);
 });

@@ -22,8 +22,8 @@ function announced(options = {}) {
   return sent.find((m) => m.type === protocol.MessageType.LAYOUT);
 }
 
-test('a game that passes no orientation announces any', () => {
-  assert.equal(announced({ buttons: ['jump'] }).orientation, 'any');
+test('a game that passes no orientation announces landscape', () => {
+  assert.equal(announced({ buttons: ['jump'] }).orientation, 'landscape');
 });
 
 test('landscape, portrait and any pass through', () => {
@@ -41,7 +41,7 @@ test('an unknown orientation falls back to any without throwing', () => {
 test('a preset spreads in with its orientation, and can be overridden or cut down', () => {
   assert.equal(announced({ ...layouts.gamepad() }).orientation, 'landscape');
   assert.equal(announced({ ...layouts.gamepad(), orientation: 'any' }).orientation, 'any');
-  assert.equal(announced({ controls: layouts.gamepad().controls }).orientation, 'any');
+  assert.equal(announced({ controls: layouts.gamepad().controls }).orientation, 'landscape');
   assert.equal(announced({ ...layouts.dpad() }).orientation, 'any');
 });
 

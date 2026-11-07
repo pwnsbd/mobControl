@@ -9,11 +9,14 @@ import * as mounts from '../shared/mounts.js';
 import { createRateLimiter } from '../shared/rate-limit.js';
 import { difference, axisAngle } from '../shared/quaternion.js';
 import { Rejected } from './grip-teacher.js';
+import { pulse } from './haptics.js';
 
 const SAY = {
   connecting: 'Connecting to the game…',
   waiting: 'Connected. Waiting for the game…',
-  ready: 'Tap Start to allow motion access.',
+  ready: 'This game uses your phone’s motion to steer. Tap Enable motion to continue.',
+  rawMotion: 'This game uses your phone’s accelerometer and gyroscope. ' +
+             'Enable motion to share those readings with the paired game while you play.',
   noRoom: 'No room in the link. Scan the QR code on the game screen again.',
   noReading: 'No sensor reading yet — move the phone slightly.',
   recentred: 'Recentred. This posture is now level.',
@@ -21,7 +24,7 @@ const SAY = {
   interrupted: 'Connection lost — input is not reaching the game. Reconnecting…',
   buttonsOnly: 'Ready — use the buttons.',
   denied: 'Motion access was denied. Open Settings → Apps → Safari → ' +
-          'Motion & Orientation Access, turn it on, reload this page and tap Start again.',
+          'Motion & Orientation Access, turn it on, reload this page and tap Enable motion again.',
   insecure: 'Motion access could not be requested. This page must be served over HTTPS.'
 };
 
@@ -41,15 +44,19 @@ export class ControllerApp {
   #stage = 'connecting';
   #layout = null;
   #latestAttitude = null;
+  #latestMotion = null;
   #sensing = false;
-  #hasMotion = false;
+  #sensingMotion = false;
+  #shareMotion = false;
+  #motionEnabled = false;
+  #requestingMotion = false;
+  #motionRequest = 0;
   #allowSend;
   #teachPhase = null;
   #stillSince = 0;
   #previousAttitude = null;
   #resumeStage = null;
   #releasing = false;
-  #orientation = 'any';
 
   constructor({
     room, transport, view, calibrator, gripTeacher, wakeLock,
@@ -67,6 +74,7 @@ export class ControllerApp {
     this.view.showRoom(this.room);
     this.view.showPose(mounts.get(this.calibrator.mount));
     this.view.onStart(() => this.#handleStartTap());
+    this.view.onMotionToggle(() => this.#toggleMotion());
     this.view.onTeach(() => this.#beginTeaching());
     this.view.onTeachCancel(() => this.#stopTeaching('armed'));
     this.view.onRecentre(() => this.#recentre());
@@ -74,7 +82,7 @@ export class ControllerApp {
     this.view.onEditHandle(() => this.view.setEditing(true));
     this.view.onEditDone(() => this.view.setEditing(false));
     this.view.onEditReset(() => this.view.resetLayout());
-    this.view.onOrientation(() => this.#reconcileOrientation());
+    this.view.onOrientation();
 
     if (!this.room) {
       this.#setStage('blocked');
@@ -89,6 +97,7 @@ export class ControllerApp {
       // A thumb that was down when the screen went away will never come up.
       // The socket is alive, so the game gets told.
       if (!visible) {
+        this.#latestMotion = null;
         this.#releaseControls();
         this.#sendFrame({ force: true });
       }
@@ -106,13 +115,11 @@ export class ControllerApp {
 
   /** Release locally; the socket is gone, so there is nothing to send to. */
   #onClose() {
+    this.#latestMotion = null;
     this.#releaseControls();
     if (this.#stage !== 'interrupted') {
-      // 'rotate' is playing with the phone held the wrong way; coming back, the
-      // phone may be held either way, so resume as 'playing' and let it decide.
-      const inPlay = this.#stage === 'playing' || this.#stage === 'rotate';
-      this.#resumeStage = inPlay ? 'playing' : this.#stage;
-      if (inPlay) {
+      this.#resumeStage = this.#stage;
+      if (this.#stage === 'playing') {
         this.#setStage('interrupted');
         this.view.say(SAY.interrupted);
       }
@@ -144,69 +151,93 @@ export class ControllerApp {
       case protocol.MessageType.LAYOUT: return this.#applyLayout(msg);
       case protocol.MessageType.RECENTRE: return this.#recentre();
       case protocol.MessageType.MESSAGE: return this.view.status(msg.text);
+      case protocol.MessageType.VIBRATE:
+        if (this.#stage === 'playing' && document.visibilityState === 'visible') {
+          pulse(msg.duration ?? 0);
+        }
+        break;
     }
   }
 
   #applyLayout(layout) {
+    const wasOptional = this.#motionOptional;
+    const previous = this.#layout;
     this.#layout = layout;
-    this.#orientation = protocol.normaliseOrientation(layout.orientation);
+    const sensorsChanged = !previous || wasOptional !== this.#motionOptional ||
+      ['usesMotion', 'usesTilt', 'motionWithJoystick'].some((key) =>
+        Boolean(previous[key]) !== Boolean(layout[key]));
+    if (sensorsChanged) this.#stopMotion();
+    if (!layout.usesMotion) {
+      this.#shareMotion = false;
+      this.#latestMotion = null;
+    }
     this.calibrator.mount = layout.mount;
     this.view.debug = layout.debug;
     this.view.usesTilt = layout.usesTilt;
     this.view.canTeach = layout.usesTilt;
     this.view.editable = layout.allowLayoutEdit !== false;
     this.view.showPose(mounts.get(layout.mount));
-    this.view.showControls(layout.controls ?? [], layout.recommendedOrientation);
+    this.view.showControls(
+      layout.controls ?? [], protocol.normaliseOrientation(layout.orientation), layout.recommendedOrientation
+    );
     this.view.status('');
 
-    // A game with no tilt needs no sensors: no permission prompt, no
-    // calibration. Scan, and play.
-    if (!layout.usesTilt) {
+    // A touch-only game can start as soon as it pairs.
+    if (!this.#usesSensors || (sensorsChanged && this.#motionOptional)) {
       this.#enterPlay();
       this.#sendFrame({ force: true });
       return;
     }
-    if (this.#stage === 'connecting') {
-      this.#setStage('ready');
-      this.view.say(SAY.ready);
-    } else if (this.#stage === 'rotate') {
-      this.#reconcileOrientation();           // the new layout may not mind how it is held
-    }
+    if (sensorsChanged) this.#showMotionSetup();
   }
 
-  // --- which way up the phone is held --------------------------------------
-  //
-  // 'rotate' is a way of playing, not a place to start from: it is entered only
-  // from play (never while connecting, blocked, or setting up) and it leaves
-  // by itself when the phone is turned.
+  get #usesSensors() { return Boolean(this.#layout?.usesTilt || this.#layout?.usesMotion); }
 
-  #needsTurn() {
-    if (this.#orientation === 'any') return false;
-    return this.#orientation !== (this.view.isLandscape ? 'landscape' : 'portrait');
+  get #motionOptional() {
+    return this.#usesSensors && !this.#layout.motionWithJoystick &&
+      (this.#layout.controls ?? []).some(({ type }) => type === 'stick' || type === 'dpad');
   }
 
-  /** Enter play, or the turn screen if the phone is held the wrong way. */
-  #enterPlay({ hint = true } = {}) {
-    if (this.#needsTurn()) {
-      this.#releaseControls();
-      this.#sendFrame({ force: true });    // say so while we are still sending
-      this.view.showTurn(this.#orientation);
-      this.#setStage('rotate');
+  #showMotionSetup() {
+    this.#releaseControls();
+    this.#setStage('ready');
+    const notice = this.#layout.usesMotion ? SAY.rawMotion : SAY.ready;
+    this.view.say(this.#motionOptional ? `${notice} You can use the joystick instead.` : notice);
+    this.#sendFrame({ force: true });
+  }
+
+  #toggleMotion() {
+    if (!this.#motionOptional) return;
+    if (this.#stage === 'playing' && !this.#motionEnabled) {
+      this.#showMotionSetup();
       return;
     }
-    this.#setStage('playing');
-    this.view.say(this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
-    if (hint) this.view.hintEditing();
+    this.#releaseControls();
+    this.#stopMotion();
+    this.#enterPlay({ hint: false });
+    this.view.status('Motion off. Use the joystick.');
+    this.#sendFrame({ force: true });
   }
 
-  /** The phone was turned, or the layout changed. Only play can be affected. */
-  #reconcileOrientation() {
-    const stage = this.#stage;
-    if (stage !== 'playing' && stage !== 'rotate') return;   // interrupted wins; the rest are not play
-    if (this.#needsTurn() === (stage === 'rotate')) return;
-    this.#enterPlay();
-    // The game hears a neutral frame either way: nothing may stay held across the switch.
-    this.#sendFrame({ force: true });
+  #stopMotion() {
+    this.#motionRequest += 1;
+    this.#requestingMotion = false;
+    if (this.#sensing) this.orientationSource.stop?.();
+    if (this.#sensingMotion) this.motionSource.stop?.();
+    this.#sensing = false;
+    this.#sensingMotion = false;
+    this.#motionEnabled = false;
+    this.#shareMotion = false;
+    this.#latestAttitude = null;
+    this.#latestMotion = null;
+    this.#teachPhase = null;
+    this.shakeDetector.reset?.();
+  }
+
+  #enterPlay({ hint = true } = {}) {
+    this.#setStage('playing');
+    this.view.say(this.#motionEnabled && this.#layout?.usesTilt ? SAY.playing : SAY.buttonsOnly);
+    if (hint) this.view.hintEditing();
   }
 
   // --- setup -------------------------------------------------------------
@@ -217,37 +248,79 @@ export class ControllerApp {
   }
 
   async #requestSensors() {
+    if (this.#stage !== 'ready' || this.#requestingMotion) return;
+    this.#requestingMotion = true;
+    const request = this.#motionRequest;
+    const requestedRawMotion = this.#layout?.usesMotion === true;
     let access;
     try {
-      access = await this.requestAccess();
+      access = await this.requestAccess({
+        orientation: !!this.#layout?.usesTilt,
+        motion: requestedRawMotion || !!this.#layout?.usesTilt
+      });
     } catch {
-      return void this.view.say(SAY.insecure);
+      access = { insecure: true };
+    } finally {
+      if (request === this.#motionRequest) this.#requestingMotion = false;
     }
-    if (!access.orientation) {
+    if (this.#stage !== 'ready' || request !== this.#motionRequest) return;
+    if (this.#layout?.usesTilt && !access.orientation) {
+      if (this.#motionOptional) {
+        this.#toggleMotion();
+        this.view.status('Motion unavailable. Use the joystick.');
+        return;
+      }
       return void this.view.say(access.insecure ? SAY.insecure : SAY.denied);
     }
 
-    this.#hasMotion = access.motion;
-    this.#beginSensing();
+    this.#shareMotion = requestedRawMotion && this.#layout?.usesMotion === true && access.motion;
+    if (access.orientation || access.motion) {
+      this.#beginSensing({ orientation: access.orientation && !!this.#layout?.usesTilt, motion: access.motion });
+    }
+    if (!this.#layout?.usesTilt) {
+      this.#motionEnabled = Boolean(access.motion);
+      this.#enterPlay();
+      if (!access.motion) {
+        this.view.status(access.insecure
+          ? 'Motion needs HTTPS. Touch controls still work.'
+          : 'Motion unavailable. Touch controls still work.');
+      }
+      this.#sendFrame({ force: true });
+      return;
+    }
     this.#setStage('armed');
     this.view.say(this.#poseInstruction());
   }
 
-  #beginSensing() {
-    if (this.#sensing) return;
-    this.#sensing = true;
-    this.orientationSource.start((attitude) => this.#onAttitude(attitude));
-    if (this.#hasMotion) {
-      this.motionSource.start((sample) => this.shakeDetector.feed(sample.acceleration));
+  #beginSensing({ orientation, motion }) {
+    if (orientation && !this.#sensing) {
+      this.#sensing = true;
+      this.orientationSource.start((attitude) => this.#onAttitude(attitude));
+    }
+    if (motion && !this.#sensingMotion) {
+      this.#sensingMotion = true;
+      this.motionSource.start((sample) => {
+        if (document.visibilityState !== 'visible' || this.#stage === 'interrupted') return;
+        if ((this.#layout?.usesTilt || this.#shareMotion) && sample.acceleration) {
+          this.shakeDetector.feed(sample.acceleration);
+        }
+        if (this.#shareMotion && this.#stage === 'playing') {
+          this.#latestMotion = { sample, angle: this.view.motionAngle };
+          this.#sendFrame();
+        }
+      });
     }
   }
 
   #beginPlaying(reference = this.#latestAttitude) {
     if (!this.#capture(reference)) return;
+    this.#motionEnabled = true;
     this.#enterPlay();
+    this.#sendFrame({ force: true });
   }
 
   #recentre() {
+    if (!this.#motionEnabled) return;
     if (this.#capture()) this.view.status(SAY.recentred);
   }
 
@@ -326,6 +399,7 @@ export class ControllerApp {
   #onAttitude(attitude) {
     this.#latestAttitude = attitude;
     if (this.#stage === 'teaching') return this.#teachStep(attitude);
+    if (!this.#motionEnabled) return;
 
     const tilt = this.calibrator.toVehicleAngles(attitude);
     if (!tilt) return;                        // not calibrated yet
@@ -338,19 +412,25 @@ export class ControllerApp {
     this.#sendFrame({ tilt });
   }
 
-  /** Buttons send immediately; tilt is rate limited. */
+  /** Buttons send immediately. Sensor updates share a rate limit. */
   #sendFrame({ tilt = null, force = false } = {}) {
-    // Nobody is listening while interrupted; and while the player is physically
-    // turning the phone, every tilt reading is a lurch they did not ask for.
-    if (this.#stage === 'interrupted' || this.#stage === 'rotate') return;
+    // Nobody is listening while interrupted.
+    if (this.#stage === 'interrupted') return;
     if (!force && !this.#allowSend()) return;
     const { buttons, sticks } = this.view.controlState;
-    this.transport.send(protocol.input({
-      tilt: tilt ?? this.#tiltNow(),
+    const input = {
+      tilt: this.#motionEnabled ? tilt ?? this.#tiltNow() : null,
       buttons,
-      sticks,
-      shake: this.shakeDetector.level
-    }));
+      sticks: this.#motionEnabled && !this.#layout.motionWithJoystick ? {} : sticks,
+      shake: this.#motionEnabled ? this.shakeDetector.level : 0,
+      motionEnabled: this.#usesSensors ? this.#motionEnabled : undefined
+    };
+    if (this.#shareMotion && this.#stage === 'playing' &&
+        document.visibilityState === 'visible' && this.#latestMotion) {
+      input.motion = this.#latestMotion.sample;
+      input.motionAngle = this.#latestMotion.angle;
+    }
+    this.transport.send(protocol.input(input));
   }
 
   #tiltNow() {
@@ -361,11 +441,16 @@ export class ControllerApp {
 
   #setStage(stage) {
     this.#stage = stage;
+    this.view.setMotionMode({
+      available: this.#motionOptional,
+      enabled: this.#motionEnabled,
+      settingUp: stage === 'ready' || stage === 'armed' || stage === 'teaching',
+      keepJoystick: this.#layout?.motionWithJoystick === true
+    });
     this.view.stage = stage;
     // Someone tilting a phone is using it, but the screen does not know that,
     // so it would dim, lock, and drop the socket mid-game.
-    // The turn screen is still play: the player is holding the phone, not leaving.
-    if (stage === 'playing' || stage === 'rotate') this.wakeLock?.acquire();
+    if (stage === 'playing') this.wakeLock?.acquire();
     else this.wakeLock?.release();
   }
 

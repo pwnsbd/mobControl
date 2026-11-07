@@ -14,11 +14,12 @@
     <span id="conn" class="conn" role="status" aria-label="Connection"></span>
     <button id="edit-handle" class="handle" hidden aria-controls="edit-bar"
             aria-expanded="false">Layout</button>
+    <button id="motion-toggle" class="motion-toggle" type="button" aria-pressed="false" hidden>Motion OFF</button>
     <button id="recentre" class="link" hidden>Recentre</button>
   </header>
 
   <div id="edit-bar" hidden>
-    <span>Drag to move &middot; tap to resize</span>
+    <span>Drag to move &middot; pinch to resize</span>
     <span id="layout-orientation"></span>
     <button id="edit-reset" class="link">Reset</button>
     <button id="edit-done" class="chip">Done</button>
@@ -29,16 +30,8 @@
     <svg id="pose" viewBox="0 0 170 104" aria-hidden="true"></svg>
     <p id="message">Connecting&hellip;</p>
     <button id="start" class="primary" disabled>Start</button>
+    <button id="motion-skip" class="link" type="button" hidden>Use joystick instead</button>
     <button id="teach" class="link" hidden>I hold it differently</button>
-  </section>
-
-  <!-- playing, but the phone is held the other way from the layout's design -->
-  <section id="rotate" class="card" data-want="landscape" hidden>
-    <svg class="turn-icon" viewBox="0 0 80 80" aria-hidden="true">
-      <rect class="turn-phone" x="24" y="8" width="32" height="64" rx="6"/>
-      <circle class="turn-dot" cx="40" cy="62" r="2.5"/>
-    </svg>
-    <p id="rotate-text" role="status"></p>
   </section>
 
   <!-- learning the grip -->

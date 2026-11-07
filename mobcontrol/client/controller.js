@@ -16,6 +16,8 @@ import { Emitter } from './shared/emitter.js';
 import * as protocol from './shared/protocol.js';
 import { ReconnectingSocket, socketUrl } from './shared/transport.js';
 import { DEFAULT_MOUNT } from './shared/mounts.js';
+import { CONTROL_TYPES } from './shared/config.js';
+import { controllerRelativeMotion } from './shared/motion-frame.js';
 import * as roomId from './game/room-id.js';
 import { createAxisMapper } from './game/axis-pipeline.js';
 import { CdnQrRenderer } from './game/qr.js';
@@ -25,7 +27,7 @@ const DEFAULTS = {
   axes: {},
   buttons: [],              // shorthand for controls of type 'button'
   controls: [],             // { id, type: 'button' | 'stick' | 'dpad', label?, side? }
-  orientation: 'any',       // 'landscape' | 'portrait' | 'any': how the controls were designed to be held
+  orientation: 'landscape', // 'any' follows the phone's screen orientation
   deadzone: 3,        // degrees of slop ignored
   range: 35,          // degrees that count as full deflection
   smoothing: 0,
@@ -50,12 +52,15 @@ export class PhoneController {
     this.pairUrl = `${location.origin}${this.basePath}/phone?room=${this.room}`;
 
     this.#mapper = createAxisMapper(settings);
+    const usesTilt = this.#mapper.names.length > 0;
     /** Whether a phone can really use this page, and what to say if not. */
-    this.reachability = checkReachability(Object.keys(settings.axes).length > 0);
+    this.reachability = checkReachability(usesTilt || settings.motion === true);
     const controls = normaliseControls(settings);
     this.#layout = protocol.layout({
       mount: settings.mount,
-      usesTilt: this.#mapper.names.length > 0,
+      usesTilt,
+      usesMotion: settings.motion === true,
+      motionWithJoystick: settings.motionWithJoystick === true,
       controls,
       orientation: settings.orientation,     // unknown values become 'any' on the wire
       recommendedOrientation: settings.recommendedOrientation,
@@ -76,6 +81,9 @@ export class PhoneController {
       () => ({ x: 0, y: 0 })
     );
     this.shake = 0;
+    this.motion = null;
+    this.controllerMotion = null;
+    this.motionEnabled = false;
     this.connected = false;
     this.calibrated = false;
     /** False while the phone is connected but the player has looked away. */
@@ -113,6 +121,12 @@ export class PhoneController {
   message(text) { this.#transport.send(protocol.message(text)); }
   /** Ask the phone to recapture its reference pose. */
   recentre() { this.#transport.send(protocol.recentre()); }
+  /** Vibrate the paired phone for 1..200 ms; invalid durations are ignored. */
+  vibrate(duration = 30) {
+    const bounded = protocol.vibrationDuration(duration);
+    if (!bounded) return false;
+    return this.#transport.send(protocol.vibrate(bounded));
+  }
   disconnect() { this.#transport.close(); }
 
   // --- incoming ----------------------------------------------------------
@@ -143,8 +157,13 @@ export class PhoneController {
   }
 
   #onInput(frame) {
-    this.axis = this.#mapper.apply(frame);
-    this.shake = frame.shake ?? 0;
+    const sensorsOff = frame.motionEnabled === false;
+    if (sensorsOff) this.#mapper.reset();
+    this.axis = sensorsOff ? this.#mapper.zeroed() : this.#mapper.apply(frame);
+    this.shake = sensorsOff ? 0 : frame.shake ?? 0;
+    this.motion = !sensorsOff && this.#layout.usesMotion ? protocol.motionSample(frame.motion) : null;
+    this.controllerMotion = controllerRelativeMotion(this.motion, frame.motionAngle);
+    this.motionEnabled = frame.motionEnabled === true;
     this.#updateButtons(frame.buttons ?? {});
     this.#updateSticks(frame.sticks ?? {});
     this.#events.emit('input', this);
@@ -169,6 +188,8 @@ export class PhoneController {
     this.axis = this.#mapper.zeroed();
     this.#mapper.reset();
     this.shake = 0;
+    this.motion = null;
+    this.controllerMotion = null;
   }
 
   #updateSticks(incoming) {
@@ -192,8 +213,11 @@ export class PhoneController {
     const wasConnected = this.connected;
     this.connected = false;
     this.calibrated = false;
+    this.motionEnabled = false;
     this.watching = true;
     this.shake = 0;
+    this.motion = null;
+    this.controllerMotion = null;
     this.axis = this.#mapper.zeroed();
     this.#mapper.reset();
     this.#updateButtons({});                   // release anything still held
@@ -201,8 +225,6 @@ export class PhoneController {
     if (wasConnected) this.#events.emit('unpair');
   }
 }
-
-const CONTROL_TYPES = new Set(['button', 'stick', 'dpad']);
 
 /**
  * `buttons: ['jump']` and `controls: [{type:'stick', id:'move'}]` are the same
@@ -216,10 +238,10 @@ function normaliseControls({ buttons = [], controls = [] }) {
   ];
   for (const control of all) {
     if (!control.id) throw new Error('mobcontrol: every control needs an id');
-    if (!CONTROL_TYPES.has(control.type)) {
+    if (!CONTROL_TYPES.includes(control.type)) {
       throw new Error(
         `mobcontrol: control "${control.id}" has type "${control.type}", ` +
-        `which is not one of ${[...CONTROL_TYPES].join(', ')}`
+        `which is not one of ${CONTROL_TYPES.join(', ')}`
       );
     }
   }
@@ -231,7 +253,8 @@ function normaliseControls({ buttons = [], controls = [] }) {
     x: control.x,
     y: control.y,
     size: control.size,
-    accent: control.accent
+    accent: control.accent,
+    haptic: control.haptic
   }));
 }
 
@@ -246,9 +269,9 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
  * Can a phone actually use this page? Two things go wrong in development and
  * both fail quietly, so the game is told plainly enough to show the player.
  *
- * @param {boolean} usesTilt  buttons work on an insecure page; sensors do not
+ * @param {boolean} usesSensors  buttons work on an insecure page; sensors do not
  */
-export function checkReachability(usesTilt, loc = location) {
+export function checkReachability(usesSensors, loc = location) {
   if (LOCAL_HOSTS.has(loc.hostname) || loc.hostname.endsWith('.localhost')) {
     return {
       ok: false,
@@ -257,12 +280,12 @@ export function checkReachability(usesTilt, loc = location) {
                'cannot reach. Run a tunnel and open the https:// address it prints.'
     };
   }
-  if (usesTilt && loc.protocol !== 'https:') {
+  if (usesSensors && loc.protocol !== 'https:') {
     return {
       ok: false,
       reason: 'insecure',
       message: 'This page is not HTTPS. Your phone will pair and the buttons will work, ' +
-               'but iOS and Android both block motion sensors on insecure pages, so tilt will not.'
+               'but the phone browser blocks motion sensors on insecure pages.'
     };
   }
   return { ok: true, reason: 'ok', message: '' };
@@ -291,4 +314,5 @@ function defaultBasePath() {
 
 export { names as mountNames, register as registerMount, DEFAULT_MOUNT } from './shared/mounts.js';
 export { layouts } from './layouts.js';
+export { configurationContract, validateConfiguration } from './shared/config.js';
 export default PhoneController;

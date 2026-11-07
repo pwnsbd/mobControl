@@ -22,7 +22,10 @@ const DPAD_SLOTS = [{ accent: 'red' }, { accent: 'green' }];
 function toButton(entry, index) {
   if (entry && typeof entry === 'object') {
     const id = String(entry.id ?? entry.label ?? `button${index + 1}`);
-    return { id, label: entry.label !== undefined ? String(entry.label) : id };
+    return {
+      id, label: entry.label !== undefined ? String(entry.label) : id,
+      ...(entry.haptic === true ? { haptic: true } : {})
+    };
   }
   const label = String(entry);
   return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, '') || `button${index + 1}`, label };
@@ -52,7 +55,7 @@ function dedupe(controls) {
 
 function dpadWithButtons(options, defaults, slots) {
   const buttons = buttonsFor(options, defaults).map((b, i) => ({
-    id: b.id, type: 'button', label: b.label, side: 'right', ...(slots[i] ?? {})
+    ...b, type: 'button', side: 'right', ...(slots[i] ?? {})
   }));
   return dedupe([
     { id: idOf(options, 'move'), type: 'dpad', label: 'MOVE', side: 'left' },
@@ -62,15 +65,16 @@ function dpadWithButtons(options, defaults, slots) {
 
 export const layouts = Object.freeze({
   /** One movement input and up to four actions, arranged by the phone. */
-  simple({ movement = 'none', buttons = [], recommendedOrientation = 'landscape' } = {}) {
+  simple({ movement = 'none', buttons = [], recommendedOrientation = 'landscape',
+    orientation = recommendedOrientation } = {}) {
     if (!['none', 'stick', 'dpad', 'tilt'].includes(movement)) {
       throw new TypeError('Choose movement: none, stick, dpad, or tilt.');
     }
     if (!Array.isArray(buttons) || buttons.length > 4) {
       throw new TypeError('The simple layout supports up to four action buttons.');
     }
-    if (!['portrait', 'landscape'].includes(recommendedOrientation)) {
-      throw new TypeError('Choose a recommended orientation: portrait or landscape.');
+    if (!['portrait', 'landscape', 'any'].includes(orientation)) {
+      throw new TypeError('Choose an orientation: portrait, landscape, or any.');
     }
     const accents = new Map([['A', 'green'], ['B', 'red'], ['X', 'blue'], ['Y', 'yellow']]);
     const controls = buttons.map((entry, index) => {
@@ -83,7 +87,7 @@ export const layouts = Object.freeze({
     if (new Set(controls.map(({ id }) => id)).size !== controls.length) {
       throw new TypeError('Give every control a unique ID.');
     }
-    return { controls, axes: movement === 'tilt' ? { x: 'roll' } : {}, recommendedOrientation };
+    return { controls, axes: movement === 'tilt' ? { x: 'roll' } : {}, orientation };
   },
 
   /** Left d-pad, right diamond of four buttons (y x b a). */

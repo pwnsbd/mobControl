@@ -67,15 +67,20 @@ import { PhoneController, layouts } from '/__phone/controller.js';
 // The controller. This is the entire integration: declare the layout, then
 // read pad.axis.x and pad.button.jump like any gamepad.
 // ===========================================================================
-const requestedMovement = new URLSearchParams(location.search).get('movement');
+const options = new URLSearchParams(location.search);
+const requestedMovement = options.get('movement');
+const showMotion = options.get('motion') === '1';
 const movement = ['stick', 'dpad', 'tilt'].includes(requestedMovement) ? requestedMovement : 'stick';
-const moveHint = { stick: 'Use the stick to move', dpad: 'Use the D-pad to move', tilt: 'Tilt to move' }[movement];
+const combineMotion = showMotion || options.get('combine') === '1';
+const moveHint = movement === 'dpad' ? 'Use the D-pad to move' : 'Use the stick to move';
 const pad = new PhoneController({
   ...layouts.simple({
-    movement,
-    recommendedOrientation: 'landscape',
-    buttons: [{ id: 'jump', label: 'A' }]
+    movement: movement === 'tilt' ? 'stick' : movement,
+    buttons: [{ id: 'jump', label: 'A', haptic: true }]
   }),
+  axes: movement === 'tilt' ? { x: 'roll' } : {},
+  motion: showMotion,
+  motionWithJoystick: combineMotion,
   mount: 'landscape-left',
   deadzone: 4,
   range: 26                                   // 26 degrees of tilt = full speed
@@ -83,7 +88,9 @@ const pad = new PhoneController({
 
 const pairing = document.getElementById('pairing');
 document.getElementById('pair-instructions').textContent = movement === 'tilt'
-  ? 'Scan with your phone, enable motion, and calibrate. Tilt to move and tap A to jump.'
+  ? (combineMotion
+    ? 'Scan with your phone, enable motion, and calibrate to use both the stick and tilt.'
+    : 'Scan with your phone. Use the stick, or turn on Motion to switch to tilt steering.')
   : `Scan with your phone. ${moveHint} and tap A to jump.`;
 document.getElementById('code').textContent = pad.room;
 document.getElementById('link').textContent = pad.pairUrl;
@@ -157,7 +164,10 @@ function steering() {
   const left = keys.has('ArrowLeft') || keys.has('KeyA');
   const right = keys.has('ArrowRight') || keys.has('KeyD');
   if (left !== right) return right ? 1 : -1;  // keyboard
-  return pad.stick.move?.x ?? pad.axis.x ?? 0;
+  const stick = pad.stick.move?.x ?? 0;
+  const tilt = pad.axis.x ?? 0;
+  if (movement === 'tilt' && pad.motionEnabled) return combineMotion ? clamp(stick + tilt, -1, 1) : tilt;
+  return stick;
 }
 const jumpHeld = () =>
   pad.button.jump || keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW');
@@ -243,8 +253,10 @@ function physics(dt) {
   player.x = clamp(player.x + player.vx * dt, 0, WORLD.width - SIZE);
   resolve('x');
   player.y += player.vy * dt;
+  const landingSpeed = player.vy;
   player.onGround = false;
   resolve('y');
+  if (player.onGround && landingSpeed > 350) pad.vibrate(50);
 
   if (player.y > WORLD.deathY) respawn();
 
@@ -292,6 +304,8 @@ function respawn() {
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const hud = document.getElementById('hud');
+const motionValues = (vector) => ['right', 'up', 'out']
+  .map((axis) => `${axis} ${vector?.[axis]?.toFixed(1) ?? '–'}`).join(' · ');
 const hint = document.getElementById('hint');
 let W = 0, H = 0, scale = 1, camX = 0;
 
@@ -359,8 +373,16 @@ function draw() {
   hud.textContent =
     `${collected}/${coins.length} coins   ${time.toFixed(1)}s   deaths ${deaths}` +
     (won ? '   — FINISHED!' : '');
+  if (showMotion) {
+    const motion = pad.controllerMotion;
+    hud.textContent += motion
+      ? ` | Relative accel (m/s²) ${motionValues(motion.acceleration)} | Relative gyro (°/s) ${motionValues(motion.rotationRate)}`
+      : pad.motion
+        ? ' | Relative motion unavailable (display angle not reported); raw motion available'
+        : ' | Waiting for phone motion';
+  }
   hint.textContent = pad.connected
-    ? (movement === 'tilt' && !pad.calibrated ? 'calibrate on the phone' : `${moveHint} · A to jump`)
+    ? `${movement === 'tilt' && pad.motionEnabled ? (combineMotion ? 'Stick + tilt to move' : 'Tilt to move') : moveHint} · A to jump`
     : 'arrow keys + space — or scan the code to use your phone';
 }
 

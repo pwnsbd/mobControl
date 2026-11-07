@@ -18,8 +18,6 @@ function rig({ usesTilt = false, orientation, landscape = true } = {}) {
   const held = { buttons: { fire: true }, sticks: { move: { x: 0.5, y: -1 } } };
   const stages = [];
   let onControls = () => {};
-  let turned = () => {};
-  const turns = [];
   const view = {
     controlState: held,
     releaseControls() {
@@ -32,8 +30,9 @@ function rig({ usesTilt = false, orientation, landscape = true } = {}) {
     say() {}, status() {}, showRoom() {}, showPose() {}, showControls() {},
     hintEditing() {},
     isLandscape: landscape,
-    onOrientation: (fn) => { turned = fn; },
-    showTurn: (want) => turns.push(want)
+    onOrientation() {},
+    onMotionToggle() {},
+    setMotionMode() {}
   };
   const taps = {};
   view.onStart = (fn) => { taps.start = fn; };
@@ -62,8 +61,7 @@ function rig({ usesTilt = false, orientation, landscape = true } = {}) {
   app.start();
   handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt, controls: [], orientation });
   sent.length = 0;
-  const turn = (isLandscape) => { view.isLandscape = isLandscape; turned(); };
-  return { handlers, sent, held, stages, listeners, locks, taps, view, turn, turns };
+  return { handlers, sent, held, stages, listeners, locks, taps, view };
 }
 
 const isNeutral = ({ buttons, sticks }) =>
@@ -122,6 +120,34 @@ test('a held stick is released on close and on hide', () => {
   r.listeners.visibilitychange();
   assert.deepEqual(r.held.sticks.move, { x: 0, y: 0 });
   assert.deepEqual(inputs(r)[0].sticks, { move: { x: 0, y: 0 } });
+});
+
+function recordVibration(t) {
+  const calls = [];
+  const original = Object.getOwnPropertyDescriptor(navigator, 'vibrate');
+  Object.defineProperty(navigator, 'vibrate', {
+    configurable: true,
+    value: (duration) => { calls.push(duration); return true; }
+  });
+  t.after(() => {
+    if (original) Object.defineProperty(navigator, 'vibrate', original);
+    else delete navigator.vibrate;
+  });
+  return calls;
+}
+
+test('game feedback only pulses while the controller is visible and playing', (t) => {
+  const calls = recordVibration(t);
+  const r = rig();
+  const request = { type: MessageType.VIBRATE, duration: 50 };
+  r.handlers.message(request);
+  document.visibilityState = 'hidden';
+  r.handlers.message(request);
+  document.visibilityState = 'visible';
+  r.handlers.message({ ...request, duration: '50' });
+  r.handlers.close();
+  r.handlers.message(request);
+  assert.deepEqual(calls, [50]);
 });
 
 test('two closes then one open still resumes play', () => {
@@ -193,6 +219,27 @@ const down = (el, pointerId, x, y) => el.listeners.pointerdown({
   pointerId, clientX: x, clientY: y, preventDefault() {}
 });
 
+test('an opted-in button pulses once for each separate press', async (t) => {
+  const calls = recordVibration(t);
+  padWorld();
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const button = fakeEl();
+  let flashes = 0;
+  button.animate = () => { flashes += 1; return { cancel() {} }; };
+  document.createElement = () => button;
+  const pad = new ControlPad(fakeEl());
+  pad.setControls([{ id: 'fire', type: 'button', haptic: true }], {});
+  down(button, 1, 50, 50);
+  down(button, 2, 50, 50);
+  winListeners.pointerup({ pointerId: 2 });
+  assert.equal(pad.state.buttons.fire, true);
+  winListeners.pointerup({ pointerId: 1 });
+  down(button, 3, 50, 50);
+  winListeners.pointerup({ pointerId: 3 });
+  assert.equal(calls.length, 2);
+  assert.equal(flashes, 2);
+});
+
 test('releaseAll neutralises a held button and a held stick, and reports it', async () => {
   padWorld();
   const { ControlPad } = await import('../client/phone/control-pad.js');
@@ -230,128 +277,129 @@ test('releaseAll with no controls mounted, or an empty list, does not throw', as
   assert.deepEqual(pad.state, { buttons: {}, sticks: {} });
 });
 
-// --- the turn-your-phone stage ---
-
-test('a landscape layout held upright shows the turn screen, with nothing held', () => {
+test('a fixed landscape layout enters play regardless of the phone viewport', () => {
   const r = rig({ orientation: 'landscape', landscape: false });
-  assert.equal(r.stages.at(-1), 'rotate');
-  assert.deepEqual(r.turns, ['landscape']);
-  assert.ok(isNeutral(r.held));
+  assert.equal(r.stages.at(-1), 'playing');
   assert.equal(r.locks.at(-1), 'on');
 });
 
-test('a landscape layout held sideways plays, and a portrait one held upright plays', () => {
-  assert.equal(rig({ orientation: 'landscape', landscape: true }).stages.at(-1), 'playing');
-  assert.equal(rig({ orientation: 'portrait', landscape: false }).stages.at(-1), 'playing');
-  const wrong = rig({ orientation: 'portrait', landscape: true });
-  assert.equal(wrong.stages.at(-1), 'rotate');
-  assert.deepEqual(wrong.turns, ['portrait']);
-});
-
-test('an any layout, or a message with no orientation field, never shows it', () => {
-  for (const orientation of ['any', undefined, 'sideways', 7]) {
-    for (const landscape of [true, false]) {
-      const r = rig({ orientation, landscape });
-      assert.equal(r.stages.at(-1), 'playing', `${orientation} ${landscape}`);
-      r.turn(!landscape);
-      assert.equal(r.stages.includes('rotate'), false, `${orientation} ${landscape}`);
+test('fixed layouts rotate on a mismatched viewport and stay selected after resizing', async () => {
+  padWorld();
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  window.screen = { orientation: { angle: 0 } };
+  const elements = new Map();
+  const root = {
+    documentElement: fakeEl(),
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, fakeEl());
+      return elements.get(id);
     }
-  }
-});
-
-test('turning the phone resolves the screen by itself, and back again', () => {
-  const r = rig({ orientation: 'landscape', landscape: false });
-  r.turn(true);
-  assert.equal(r.stages.at(-1), 'playing');
-  r.turn(false);
-  assert.equal(r.stages.at(-1), 'rotate');
-  r.turn(true);
-  assert.equal(r.stages.at(-1), 'playing');
-});
-
-test('turning away mid-press releases the control and tells the game', () => {
-  const r = rig({ orientation: 'landscape', landscape: true });
-  hold(r);
-  r.turn(false);
-  assert.equal(r.stages.at(-1), 'rotate');
-  assert.ok(isNeutral(r.held));
-  assert.deepEqual(inputs(r).at(-1).buttons, { fire: false });
-  assert.deepEqual(inputs(r).at(-1).sticks, { move: { x: 0, y: 0 } });
-  r.turn(true);                          // leaving it leaves the state neutral too
-  assert.equal(r.stages.at(-1), 'playing');
-  assert.ok(isNeutral(r.held));
-  assert.deepEqual(inputs(r).at(-1).buttons, { fire: false });
-});
-
-test('a turn that changes nothing sends nothing', () => {
-  const r = rig({ orientation: 'landscape', landscape: true });
-  r.turn(true);
-  assert.equal(r.sent.length, 0);
-});
-
-test('a disconnection while held the wrong way reads as disconnected, then resumes right', () => {
-  const r = rig({ orientation: 'landscape', landscape: false });
-  r.handlers.close();
-  assert.equal(r.stages.at(-1), 'interrupted');
-  assert.ok(isNeutral(r.held));
-  r.turn(true);                          // turning while disconnected must not hide that
-  assert.equal(r.stages.at(-1), 'interrupted');
-  r.handlers.open();
-  assert.equal(r.stages.at(-1), 'playing');
-  r.handlers.close();
-  r.turn(false);
-  r.handlers.open();
-  assert.equal(r.stages.at(-1), 'rotate');
-  assert.ok(isNeutral(r.held));
-});
-
-test('the turn screen does not appear before play, however the phone is held', () => {
-  const r = rig({ usesTilt: true, orientation: 'landscape', landscape: false });
-  assert.equal(r.stages.at(-1), 'ready');
-  r.turn(true);
-  r.turn(false);
-  assert.equal(r.stages.includes('rotate'), false);
-});
-
-test('a layout that stops caring about orientation ends the turn screen', () => {
-  const r = rig({ orientation: 'landscape', landscape: false });
-  r.handlers.message({ type: MessageType.LAYOUT, mount: 'flat', usesTilt: false, controls: [] });
-  assert.equal(r.stages.at(-1), 'playing');
-});
-
-test('nothing the player touches is sent while the turn screen is up', () => {
-  const r = rig({ orientation: 'landscape', landscape: true });
-  r.turn(false);
-  assert.equal(r.stages.at(-1), 'rotate');
-  r.sent.length = 0;
-  hold(r);                               // a stray touch that slips past the hidden pad
-  r.view.onControlsFire();
-  assert.equal(inputs(r).length, 0);
-});
-
-// --- the turn screen is the only panel on show (real PhoneView, fake DOM) ---
-
-test('on the rotate stage the setup panel is hidden and the turn panel shown', async () => {
-  const els = new Map();
-  const el = () => ({
-    hidden: false, disabled: false, textContent: '', dataset: {}, style: {},
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    addEventListener() {}, setAttribute() {}, appendChild() {}, replaceChildren() {},
-    querySelector: () => null, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 0, height: 0 })
-  });
-  const root = { getElementById: (id) => { if (!els.has(id)) els.set(id, el()); return els.get(id); } };
-  globalThis.document = { createElement: el };
-  globalThis.window = { addEventListener() {}, matchMedia: () => ({ matches: false }), innerWidth: 800, innerHeight: 400 };
+  };
   const { ControllerView } = await import('../client/phone/view.js');
   const view = new ControllerView(root);
-  const setup = root.getElementById('setup');
-  const turn = root.getElementById('rotate');
+  view.onOrientation();
+  let button;
+  document.createElement = () => { button = fakeEl(); return button; };
+  view.showControls([SPECS[0]], 'landscape');
+  const data = root.documentElement.dataset;
+  assert.equal(data.layoutOrientation, 'landscape');
+  assert.equal(data.layoutRotation, 'clockwise');
+  assert.equal(view.motionAngle, -90);
+  const frames = [];
+  view.onControls((frame) => frames.push(frame));
+  down(button, 1, 50, 50);
+  assert.equal(view.controlState.buttons.fire, true);
 
-  view.stage = 'rotate';
-  assert.equal(setup.hidden, true, 'setup panel must not show behind the turn screen');
-  assert.equal(turn.hidden, false);
+  window.innerWidth = 844;
+  window.innerHeight = 390;
+  window.screen.orientation.angle = 270;
+  winListeners.resize();
+  assert.equal(view.controlState.buttons.fire, false);
+  assert.equal(frames.at(-1).buttons.fire, false);
+  assert.equal(data.layoutOrientation, 'landscape');
+  assert.equal(data.layoutRotation, '');
+  assert.equal((view.motionAngle + 360) % 360, 270);
 
-  view.stage = 'ready';
-  assert.equal(setup.hidden, false);
-  assert.equal(turn.hidden, true);
+  view.showControls([], 'portrait');
+  assert.equal(data.layoutOrientation, 'portrait');
+  assert.equal(data.layoutRotation, 'clockwise');
+  assert.equal(view.motionAngle, 180);
+  delete window.screen.orientation;
+  window.orientation = -90;
+  assert.equal((view.motionAngle + 360) % 360, 180);
+
+  view.showControls([], 'any');
+  assert.equal(data.layoutOrientation, 'landscape');
+  assert.equal(data.layoutRotation, '');
+});
+
+test('rotated stick input and layout editing use controller coordinates', async () => {
+  padWorld();
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const root = fakeEl();
+  root.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 400 });
+  const pad = new ControlPad(root);
+  pad.rotated = true;
+  const elements = [];
+  document.createElement = () => { const el = fakeEl(); elements.push(el); return el; };
+  pad.setControls([SPECS[1]], { move: { x: 0.5, y: 0.5, size: 'm' } });
+  const [stick] = elements;
+  down(stick, 1, 50, 100);
+  assert.deepEqual(pad.state.sticks.move, { x: 1, y: 0 });
+  winListeners.pointermove({ pointerId: 1, clientX: 0, clientY: 50 });
+  assert.deepEqual(pad.state.sticks.move, { x: 0, y: 1 });
+  winListeners.pointerup({ pointerId: 1 });
+
+  pad.editing = true;
+  down(stick, 2, 110, 220);
+  winListeners.pointermove({ pointerId: 2, clientX: 130, clientY: 260 });
+  winListeners.pointerup({ pointerId: 2 });
+  assert.deepEqual(pad.layout.move, { x: 0.6, y: 0.4, size: 'm' });
+});
+
+test('pinching a rotated button keeps its center and leaves space for its neighbor', async () => {
+  padWorld();
+  window.innerWidth = 200;
+  window.innerHeight = 400;
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const root = fakeEl();
+  root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400 });
+  const pad = new ControlPad(root);
+  pad.rotated = true;
+  const elements = [];
+  document.createElement = () => { const el = fakeEl(); elements.push(el); return el; };
+  const fire = { x: 0.35, y: 0.5, size: 'm' };
+  const jump = { x: 0.65, y: 0.5, size: 'm' };
+  pad.setControls([SPECS[0], { id: 'jump', type: 'button' }], { fire, jump });
+  pad.editing = true;
+  const saved = [];
+  pad.onLayoutChange((layout) => saved.push(layout));
+  const touch = (pointerId, clientY) => ({
+    pointerId, clientX: 100, clientY, pointerType: 'touch', preventDefault() {}
+  });
+  const start = () => {
+    elements[0].listeners.pointerdown(touch(1, 140));
+    root.listeners.pointerdown(touch(2, 160));
+  };
+  start();
+  winListeners.pointermove(touch(2, 260));
+  // The centers are 120px apart, the neighboring radius is 30px, and the gap is 8px.
+  assert.ok(Math.abs(parseFloat(elements[0].style.width) - 164) < 1e-9);
+  assert.deepEqual(pad.layout.jump, jump);
+  assert.equal(pad.layout.fire.x, fire.x);
+  assert.equal(pad.layout.fire.y, fire.y);
+  winListeners.pointermove(touch(2, 150));
+  assert.equal(parseFloat(elements[0].style.width), 30);
+  winListeners.pointerup(touch(2, 150));
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].fire.size, 0.15);
+
+  start();
+  winListeners.pointermove(touch(2, 190));
+  winListeners.pointercancel({ ...touch(2, 190), type: 'pointercancel' });
+  assert.deepEqual(pad.layout, saved[0]);
+  assert.equal(saved.length, 1);
 });

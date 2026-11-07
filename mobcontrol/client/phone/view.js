@@ -7,10 +7,10 @@ import * as poseDiagram from './pose-diagram.js';
 import { ControlPad } from './control-pad.js';
 import { PadLayoutStore } from './pad-layout.js';
 
-/** @typedef {'connecting'|'ready'|'armed'|'teaching'|'playing'|'rotate'|'interrupted'|'blocked'} Stage */
+/** @typedef {'connecting'|'ready'|'armed'|'teaching'|'playing'|'interrupted'|'blocked'} Stage */
 
 const START_LABEL = {
-  connecting: 'Start', ready: 'Start', armed: 'Calibrate', interrupted: 'Start', blocked: 'Start'
+  connecting: 'Start', ready: 'Enable motion', armed: 'Calibrate', interrupted: 'Start', blocked: 'Start'
 };
 const DIAL_CIRCUMFERENCE = 327;        // 2 * pi * r, r = 52
 
@@ -21,22 +21,27 @@ export class ControllerView {
   #store = new PadLayoutStore();
   #controls = [];
   #layoutOrientation;
+  #fixedOrientation = 'any';
+  #rotated = false;
   #recommendedOrientation;
   #tiltVisible = false;
   #tiltDirection = '';
   #canEdit = false;
   #editing = false;
+  #motion = { available: false, enabled: false, settingUp: false, keepJoystick: false };
 
   constructor(root = document) {
     this.#root = root;
     const byId = (id) => root.getElementById(id);
     this.#el = {
-      room: byId('room'), setup: byId('setup'), rotate: byId('rotate'), rotateText: byId('rotate-text'), teaching: byId('teaching'),
+      room: byId('room'), setup: byId('setup'), teaching: byId('teaching'),
       pose: byId('pose'), message: byId('message'), status: byId('status'),
       start: byId('start'), teach: byId('teach'), teachCancel: byId('teach-cancel'),
       teachText: byId('teach-text'), dialFill: byId('dial-fill'), dialValue: byId('dial-value'),
       tilt: byId('tilt'), tiltDot: byId('tilt-dot'), tiltLabel: byId('tilt-label'), pad: byId('pad'),
       recentre: byId('recentre'), readout: byId('readout'),
+      motionToggle: byId('motion-toggle'),
+      motionSkip: byId('motion-skip'),
       editHandle: byId('edit-handle'), editBar: byId('edit-bar'),
       editDone: byId('edit-done'), editReset: byId('edit-reset'),
       layoutOrientation: byId('layout-orientation'),
@@ -49,6 +54,10 @@ export class ControllerView {
   onTeach(fn) { this.#el.teach.addEventListener('click', fn); }
   onTeachCancel(fn) { this.#el.teachCancel.addEventListener('click', fn); }
   onRecentre(fn) { this.#el.recentre.addEventListener('click', fn); }
+  onMotionToggle(fn) {
+    this.#el.motionToggle.addEventListener('click', fn);
+    this.#el.motionSkip.addEventListener('click', fn);
+  }
   onControls(fn) { this.#pad.onChange(fn); }
   onEditDone(fn) { this.#el.editDone.addEventListener('click', fn); }
   onEditReset(fn) { this.#el.editReset.addEventListener('click', fn); }
@@ -58,28 +67,31 @@ export class ControllerView {
   /** True while the screen is wider than it is tall. */
   get isLandscape() { return window.innerWidth > window.innerHeight; }
 
+  /** Browser screen angle with the controller's clockwise CSS turn applied. */
+  get motionAngle() {
+    const angle = window.screen?.orientation?.angle ?? window.orientation;
+    if (!Number.isFinite(angle) || angle % 90 !== 0) return null;
+    return angle - (this.#rotated ? 90 : 0);
+  }
+
   /** Called when the phone is turned (or the window otherwise changes shape). */
-  onOrientation(fn) {
+  onOrientation() {
     const changed = () => {
-      if (this.#layoutOrientation !== this.#screenOrientation && this.#layoutOrientation) {
+      if (this.#layoutOrientation && (this.#layoutOrientation !== this.#effectiveOrientation
+          || this.#rotated !== this.#needsRotation)) {
         this.#pad.releaseAll();
         this.#loadLayout();
       }
-      fn();
     };
     window.addEventListener('resize', changed);
     window.addEventListener('orientationchange', changed);
   }
 
   get #screenOrientation() { return this.isLandscape ? 'landscape' : 'portrait'; }
-
-  /** Say which way to turn the phone. @param {'landscape'|'portrait'} want */
-  showTurn(want) {
-    this.#el.rotate.dataset.want = want;
-    this.#el.rotateText.textContent = want === 'landscape'
-      ? 'Turn your phone sideways to play'
-      : 'Hold your phone upright to play';
+  get #effectiveOrientation() {
+    return this.#fixedOrientation === 'any' ? this.#screenOrientation : this.#fixedOrientation;
   }
+  get #needsRotation() { return this.#effectiveOrientation !== this.#screenOrientation; }
 
   /** @returns {{buttons:Object, sticks:Object}} */
   get controlState() { return this.#pad.state; }
@@ -93,16 +105,22 @@ export class ControllerView {
   status(text) { this.#el.status.textContent = text ?? ''; }
   set canTeach(on) { this.#el.teach.hidden = !on; }
 
-  showControls(controls, recommendedOrientation) {
+  showControls(controls, orientation, recommendedOrientation) {
     this.#controls = controls;
+    this.#fixedOrientation = orientation;
     this.#recommendedOrientation = recommendedOrientation;
     this.#loadLayout();
   }
 
   #loadLayout() {
-    const orientation = this.#screenOrientation;
+    const orientation = this.#effectiveOrientation;
     const controls = this.#controls;
     this.#layoutOrientation = orientation;
+    this.#rotated = this.#needsRotation;
+    const root = this.#root.documentElement;
+    root.dataset.layoutOrientation = orientation;
+    root.dataset.layoutRotation = this.#rotated ? 'clockwise' : '';
+    this.#pad.rotated = this.#rotated;
     this.#pad.setControls(controls, this.#store.load(controls, orientation));
     this.#pad.onLayoutChange((layout) => this.#store.save(controls, layout, orientation));
     const label = this.#el.layoutOrientation;
@@ -172,6 +190,31 @@ export class ControllerView {
   set debug(on) { this.#el.readout.hidden = !on; }
   set usesTilt(on) { this.#tiltVisible = on; }
 
+  /** Update the motion toggle and its motion-only play affordances. */
+  setMotionMode({ available, enabled, settingUp, keepJoystick = false }) {
+    this.#motion = {
+      available: Boolean(available), enabled: Boolean(enabled),
+      settingUp: Boolean(settingUp), keepJoystick: Boolean(keepJoystick)
+    };
+    this.#syncMotionMode();
+  }
+
+  #syncMotionMode() {
+    const root = this.#root.documentElement;
+    root.dataset.motionEnabled = String(this.#motion.enabled);
+    root.dataset.motionReplacesJoystick = String(this.#motion.enabled && !this.#motion.keepJoystick);
+    this.#el.motionToggle.setAttribute('aria-pressed', String(this.#motion.enabled));
+    this.#el.motionToggle.textContent = this.#motion.settingUp
+      ? 'Cancel motion' : `Motion ${this.#motion.enabled ? 'ON' : 'OFF'}`;
+    const stage = root.dataset.stage;
+    this.#el.motionSkip.hidden = !this.#motion.available || !['ready', 'armed'].includes(stage);
+    this.#el.motionToggle.hidden = !this.#motion.available
+      || !['teaching', 'playing'].includes(stage);
+    const tilt = stage === 'playing' && this.#motion.enabled && this.#tiltVisible;
+    this.#el.recentre.hidden = !tilt;
+    this.#el.tilt.hidden = !tilt;
+  }
+
   /**
    * Exactly one panel is on screen at a time; once playing, the screen belongs
    * to the player.
@@ -180,23 +223,22 @@ export class ControllerView {
   set stage(stage) {
     const playing = stage === 'playing';
     const teaching = stage === 'teaching';
-    const turning = stage === 'rotate';
     const hasControls = this.#controls.length > 0;
 
     // The stylesheet keys its palette and layout off this; no logic lives here.
     if (this.#root.documentElement) this.#root.documentElement.dataset.stage = stage;
-    this.#el.setup.hidden = playing || teaching || turning;
-    this.#el.rotate.hidden = !turning;
+    this.#el.setup.hidden = playing || teaching;
     this.#el.teaching.hidden = !teaching;
-    this.#el.recentre.hidden = !(playing && this.#tiltVisible);
-    this.#el.tilt.hidden = !(playing && this.#tiltVisible);
+    this.#el.recentre.hidden = !(playing && this.#motion.enabled && this.#tiltVisible);
+    this.#el.tilt.hidden = !(playing && this.#motion.enabled && this.#tiltVisible);
     this.#el.pad.hidden = !(playing && hasControls);
     this.#el.editHandle.hidden = !(playing && hasControls && this.#canEdit);
 
     if (!playing && this.#editing) this.setEditing(false);
-    if (!playing && !teaching && !turning) {
+    if (!playing && !teaching) {
       this.#el.start.textContent = START_LABEL[stage];
-      this.#el.start.disabled = stage === 'blocked' || stage === 'connecting' || stage === 'interrupted' || turning;
+      this.#el.start.disabled = stage === 'blocked' || stage === 'connecting' || stage === 'interrupted';
     }
+    this.#syncMotionMode();
   }
 }

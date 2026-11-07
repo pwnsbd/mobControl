@@ -7,7 +7,9 @@
 // Kept separate from orientation because it is a separate permission on iOS
 // and a separate thing to fake in a test.
 
-const ZERO = { x: 0, y: 0, z: 0 };
+const vector = (source, axes) => source
+  ? Object.fromEntries(axes.map((axis) => [axis, source[axis] ?? null]))
+  : null;
 
 export class DeviceMotionSource {
   #handler = null;
@@ -22,9 +24,9 @@ export class DeviceMotionSource {
       const r = event.rotationRate;
       if (!a && !r) return;                    // some devices report neither
       onSample({
-        acceleration: a ? { x: a.x ?? 0, y: a.y ?? 0, z: a.z ?? 0 } : ZERO,
+        acceleration: vector(a, ['x', 'y', 'z']),
         // rotationRate is given about the device's Z, X and Y axes.
-        rotationRate: r ? { x: r.beta ?? 0, y: r.gamma ?? 0, z: r.alpha ?? 0 } : ZERO
+        rotationRate: r ? { x: r.beta ?? null, y: r.gamma ?? null, z: r.alpha ?? null } : null
       });
     };
     window.addEventListener('devicemotion', this.#handler);

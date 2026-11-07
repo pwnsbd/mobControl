@@ -14,26 +14,30 @@ const isGated = (ctor) =>
  * Must be called synchronously from a user gesture (a tap handler).
  * @returns {Promise<MotionAccess>}
  */
-export async function requestMotionAccess() {
+export async function requestMotionAccess({ orientation = true, motion = true } = {}) {
   // No secure context, no sensors — on iOS the prompt is refused, and on
   // Android the events simply never fire. Better to say so than to wait.
   if (globalThis.isSecureContext === false) {
     return { orientation: false, motion: false, prompted: false, insecure: true };
   }
-  if (!isGated(globalThis.DeviceOrientationEvent)) {
-    return { orientation: true, motion: true, prompted: false };
-  }
+  const orientationGated = isGated(globalThis.DeviceOrientationEvent);
+  const motionGated = isGated(globalThis.DeviceMotionEvent);
+  const request = (ctor) => {
+    try { return ctor.requestPermission().catch(() => 'denied'); }
+    catch { return Promise.resolve('denied'); }
+  };
+  const orientationRequest = orientation && orientationGated
+    ? request(DeviceOrientationEvent)
+    : Promise.resolve(orientation ? 'granted' : 'denied');
+  const motionRequest = motion && motionGated
+    ? request(DeviceMotionEvent)
+    : Promise.resolve(motion ? 'granted' : 'denied');
 
-  // Both requests must start inside the gesture, so fire them before awaiting.
-  const orientation = DeviceOrientationEvent.requestPermission();
-  const motion = isGated(globalThis.DeviceMotionEvent)
-    ? DeviceMotionEvent.requestPermission().catch(() => 'denied')
-    : Promise.resolve('granted');
-
-  const [orientationState, motionState] = await Promise.all([orientation, motion]);
+  // Start every requested gated permission before awaiting, inside the tap.
+  const [orientationState, motionState] = await Promise.all([orientationRequest, motionRequest]);
   return {
     orientation: orientationState === 'granted',
     motion: motionState === 'granted',
-    prompted: true
+    prompted: (orientation && orientationGated) || (motion && motionGated)
   };
 }

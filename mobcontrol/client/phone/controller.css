@@ -40,6 +40,7 @@ html[data-stage="playing"] body { background: var(--bg); }
 
 main {
   height: 100%;
+  touch-action: none;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -48,6 +49,21 @@ main {
   padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
            max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   text-align: center;
+}
+
+/* When the requested layout differs from the device orientation, rotate the
+   complete controller canvas inside the physical viewport. The swapped
+   dimensions make the post-rotation bounds exactly match the viewport. */
+html[data-layout-rotation="clockwise"] main {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: rotate(90deg) translateY(-100%);
+  padding: max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom))
+           max(18px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-top));
 }
 
 header {
@@ -140,24 +156,20 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 .link:active { background: var(--surface); }
 .link[hidden] { display: none; }
 
-/* --- turn your phone ----------------------------------------------------- */
-
-#rotate-text { color: var(--text); font-size: 17px; font-weight: 500; max-width: 24ch; text-align: center; }
-.turn-icon { width: 96px; height: 96px; }
-.turn-phone { fill: none; stroke: var(--text); stroke-width: 3; }
-.turn-dot { fill: var(--amber); }
-/* The icon is drawn upright and swings to the way it should be held. A phone
-   wanted upright starts on its side. */
-#rotate[data-want="landscape"] { --from: 0deg;  --to: -90deg; }
-#rotate[data-want="portrait"]  { --from: 90deg; --to: 0deg; }
-.turn-icon { transform: rotate(var(--to)); }
-@media (prefers-reduced-motion: no-preference) {
-  .turn-icon { animation: turn 2.2s ease-in-out infinite; }
+.motion-toggle {
+  min-height: 44px;
+  min-width: 76px;
+  padding: 8px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  touch-action: manipulation;
 }
-@keyframes turn {
-  0%, 20%  { transform: rotate(var(--from)); }
-  60%, 100% { transform: rotate(var(--to)); }
-}
+.motion-toggle[aria-pressed="true"] { color: var(--ink); background: var(--sage); border-color: transparent; }
+.motion-toggle[hidden] { display: none; }
 
 /* --- the pose diagram ---------------------------------------------------- */
 
@@ -252,6 +264,8 @@ button { font: inherit; border: 0; background: none; color: inherit; }
   min-height: 0;
 }
 #pad[hidden] { display: none; }
+html[data-motion-replaces-joystick="true"] #pad .control--stick,
+html[data-motion-replaces-joystick="true"] #pad .control--dpad { display: none; }
 
 /* Every control is placed the same way; only its insides differ. */
 .control {
@@ -265,6 +279,8 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 /* --- a button ------------------------------------------------------------ */
 
 .control--button {
+  padding: 0;
+  overflow: hidden;
   font-size: clamp(15px, 4.6vw, 22px);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -479,35 +495,36 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 /* How a gamepad is held. Insets keep the notch side clear (see `main`); the
    pad fills what is left, so controls sit under the thumbs at both edges. */
 
-@media (orientation: landscape) and (max-height: 520px) {
-  main { gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
-  header { min-height: 30px; }
+@media (max-height: 520px), (max-width: 520px) {
+  html[data-layout-orientation="landscape"] main { gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  html[data-layout-orientation="landscape"][data-layout-rotation="clockwise"] main { padding-top: max(8px, env(safe-area-inset-right)); }
+  html[data-layout-orientation="landscape"] header { min-height: 30px; }
 
   /* setup: the diagram beside the words, so nothing needs to scroll */
-  .card { max-width: 560px; padding: 14px 20px; gap: 10px 22px; }
-  #setup {
+  html[data-layout-orientation="landscape"] .card { max-width: 560px; padding: 14px 20px; gap: 10px 22px; }
+  html[data-layout-orientation="landscape"] #setup {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     justify-items: center;
     align-items: center;
   }
-  #setup #pose { grid-row: 1 / span 3; width: 150px; height: 92px; }
-  #setup > :not(#pose) { grid-column: 2; }
-  #teaching {
+  html[data-layout-orientation="landscape"] #setup #pose { grid-row: 1 / span 3; width: 150px; height: 92px; }
+  html[data-layout-orientation="landscape"] #setup > :not(#pose) { grid-column: 2; }
+  html[data-layout-orientation="landscape"] #teaching {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     justify-items: center;
     align-items: center;
   }
-  #teaching .dial { grid-row: 1 / span 2; width: 110px; height: 110px; }
-  #teaching > :not(.dial) { grid-column: 2; }
-  #dial-value { font-size: 24px; }
-  #setup .primary { padding: 12px 24px; font-size: 16px; }
-  #message, #teach-text { max-width: none; }
+  html[data-layout-orientation="landscape"] #teaching .dial { grid-row: 1 / span 2; width: 110px; height: 110px; }
+  html[data-layout-orientation="landscape"] #teaching > :not(.dial) { grid-column: 2; }
+  html[data-layout-orientation="landscape"] #dial-value { font-size: 24px; }
+  html[data-layout-orientation="landscape"] #setup .primary { padding: 12px 24px; font-size: 16px; }
+  html[data-layout-orientation="landscape"] #message, html[data-layout-orientation="landscape"] #teach-text { max-width: none; }
 
   /* playing: chrome clusters top-centre, clear of both thumbs */
-  html[data-stage="playing"] header { justify-content: center; gap: 14px; }
-  html[data-stage="playing"] #status {
+  html[data-layout-orientation="landscape"][data-stage="playing"] header { justify-content: center; gap: 14px; }
+  html[data-layout-orientation="landscape"][data-stage="playing"] #status {
     position: absolute;
     left: 50%;
     bottom: max(6px, env(safe-area-inset-bottom));
@@ -517,16 +534,21 @@ button { font: inherit; border: 0; background: none; color: inherit; }
     white-space: nowrap;
     pointer-events: none;
   }
-  #tilt { max-width: 280px; }
-  #readout { position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
+  html[data-layout-orientation="landscape"][data-layout-rotation="clockwise"][data-stage="playing"] #status {
+    bottom: max(6px, env(safe-area-inset-left));
+  }
+  html[data-layout-orientation="landscape"] #tilt { max-width: 280px; }
+  html[data-layout-orientation="landscape"] #readout { position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
              transform: translateX(-50%); width: 40%; pointer-events: none; }
-  .axis { padding: 4px; }
-  .axis b { font-size: 14px; }
+  html[data-layout-orientation="landscape"][data-layout-rotation="clockwise"] #readout { bottom: max(22px, env(safe-area-inset-left)); }
+  html[data-layout-orientation="landscape"] .axis { padding: 4px; }
+  html[data-layout-orientation="landscape"] .axis b { font-size: 14px; }
 }
 
 /* Very narrow phones: shave padding rather than clip. */
 @media (max-width: 340px) {
   main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  html[data-layout-rotation="clockwise"] main { padding-left: max(12px, env(safe-area-inset-top)); padding-right: max(12px, env(safe-area-inset-bottom)); }
   .card { padding: 18px 14px; }
   #pose { max-width: 100%; }
 }
@@ -555,17 +577,14 @@ button { font: inherit; border: 0; background: none; color: inherit; }
 html[data-stage="ready"] .conn,
 html[data-stage="armed"] .conn,
 html[data-stage="teaching"] .conn,
-html[data-stage="rotate"] .conn,
 html[data-stage="playing"] .conn { color: var(--sage); }
 html[data-stage="ready"] .conn::before,
 html[data-stage="armed"] .conn::before,
 html[data-stage="teaching"] .conn::before,
-html[data-stage="rotate"] .conn::before,
 html[data-stage="playing"] .conn::before { background: var(--sage); border-color: var(--sage); }
 html[data-stage="ready"] .conn::after,
 html[data-stage="armed"] .conn::after,
 html[data-stage="teaching"] .conn::after,
-html[data-stage="rotate"] .conn::after,
 html[data-stage="playing"] .conn::after { content: "LIVE"; }
 html:not([data-stage]) .conn::after,
 html[data-stage="connecting"] .conn::after { content: "LINKING"; }

@@ -21,8 +21,16 @@ export const MessageType = Object.freeze({
   PRESENCE: 'presence',
   /** game -> phone: show this text / recapture the reference pose */
   MESSAGE: 'message',
-  RECENTRE: 'recentre'
+  RECENTRE: 'recentre',
+  /** game -> phone: vibrate for a bounded duration */
+  VIBRATE: 'vibrate'
 });
+
+/** Clamp finite positive durations to the supported 1..200 ms range. */
+export function vibrationDuration(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.min(200, Math.max(1, Math.round(value))) : 0;
+}
 
 /** The three things tilt can give. A game maps these onto its own axis names. */
 export const SIGNALS = Object.freeze(['yaw', 'pitch', 'roll']);
@@ -40,17 +48,21 @@ export const normaliseOrientation = (value) => (ORIENTATIONS.includes(value) ? v
  * @param {object} layout
  * @param {string} layout.mount      holding pose
  * @param {boolean} layout.usesTilt  false lets the phone skip calibration entirely
+ * @param {boolean} [layout.usesMotion] sends device-frame acceleration and rotation rate
  * @param {Array<{id:string,type:'button'|'stick'|'dpad',label?:string,side?:string}>} layout.controls
  * @param {'landscape'|'portrait'|'any'} [layout.orientation] how the controls were designed to be held
  * @param {boolean} [layout.debug]   show the raw angle readout on the phone
  * @param {boolean} [layout.allowLayoutEdit] let the player rearrange the controls
  */
 export const layout = ({
-  mount, usesTilt, controls, orientation, recommendedOrientation, debug = false, allowLayoutEdit = true
+  mount, usesTilt, usesMotion, motionWithJoystick, controls, orientation, recommendedOrientation,
+  debug = false, allowLayoutEdit = true
 }) => ({
   type: MessageType.LAYOUT,
   mount,
   usesTilt,
+  ...(usesMotion === true ? { usesMotion } : {}),
+  ...(motionWithJoystick === true && (usesTilt || usesMotion) ? { motionWithJoystick } : {}),
   controls,
   orientation: normaliseOrientation(orientation),
   ...(recommendedOrientation === 'portrait' || recommendedOrientation === 'landscape'
@@ -64,14 +76,34 @@ export const layout = ({
  * @param {Record<string, boolean>} buttons
  * @param {Record<string, {x:number,y:number}>} sticks  sticks and dpads alike
  * @param {number} shake
+ * @param {object} [motion] optional uncalibrated device motion
+ * @param {number} [motionAngle] rotation used to map device motion to controller axes
  */
-export const input = ({ tilt, buttons, sticks, shake }) => ({
+export const input = ({ tilt, buttons, sticks, shake, motion, motionAngle, motionEnabled }) => ({
   type: MessageType.INPUT,
   yaw: round(tilt?.yaw), pitch: round(tilt?.pitch), roll: round(tilt?.roll),
   buttons,
   sticks,
-  shake: round(shake, 3)
+  shake: round(shake, 3),
+  ...(motion ? { motion } : {}),
+  ...(motion && Number.isFinite(motionAngle) ? { motionAngle } : {}),
+  ...(typeof motionEnabled === 'boolean' ? { motionEnabled } : {})
 });
+
+/** A missing sensor or reading stays null so zero remains a real measurement. */
+export function motionSample(sample) {
+  const acceleration = motionVector(sample?.acceleration);
+  const rotationRate = motionVector(sample?.rotationRate);
+  return acceleration || rotationRate ? { acceleration, rotationRate } : null;
+}
+
+function motionVector(vector) {
+  if (!vector) return null;
+  const x = Number.isFinite(vector.x) ? vector.x : null;
+  const y = Number.isFinite(vector.y) ? vector.y : null;
+  const z = Number.isFinite(vector.z) ? vector.z : null;
+  return x === null && y === null && z === null ? null : { x, y, z };
+}
 
 export const calibrated = () => ({ type: MessageType.CALIBRATED });
 
@@ -83,6 +115,7 @@ export const calibrated = () => ({ type: MessageType.CALIBRATED });
 export const presence = (visible) => ({ type: MessageType.PRESENCE, visible });
 export const message = (text) => ({ type: MessageType.MESSAGE, text: String(text) });
 export const recentre = () => ({ type: MessageType.RECENTRE });
+export const vibrate = (duration) => ({ type: MessageType.VIBRATE, duration: vibrationDuration(duration) });
 
 /** Returns the parsed object, or null if it was not usable JSON. */
 export function parse(text) {
