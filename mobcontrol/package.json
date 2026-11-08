@@ -4,6 +4,11 @@
   "description": "Turn any phone into a motion-and-touch controller for a web game. Scan a QR code and play.",
   "keywords": ["gamepad", "controller", "deviceorientation", "websocket", "qr", "phone"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pwnsbd/mobControl.git",
+    "directory": "mobcontrol"
+  },
   "type": "commonjs",
   "main": "index.js",
   "files": ["index.js", "src/", "client/", "AGENT_README.md", "docs/layouts/"],
