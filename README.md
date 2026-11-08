@@ -58,10 +58,19 @@ Run `node server.cjs`. With both devices on the same Wi-Fi, open `http://<comput
 
 ## Connect it to your game
 
+### Phone layouts
+
+| Cube Run · Joystick | Cube Run · D-pad | Tilt Flyer · Motion |
+| --- | --- | --- |
+| ![Joystick, Jump, and Play/Pause](mobcontrol/docs/layouts/cube-run-joystick.png) | ![D-pad, Jump, and Play/Pause](mobcontrol/docs/layouts/cube-run-dpad.png) | ![Motion steering, Boost, Brake, and Play/Pause](mobcontrol/docs/layouts/tilt-flyer-motion.png) |
+
+Games can also declare a **drag surface** for gestures such as pushing a puck.
+
 | Input | What your game reads |
 | --- | --- |
 | Button | Listen for `press` and `release`, or read `pad.button.jump` while held. |
 | Stick or D-pad | Read `pad.stick.move.x` and `pad.stick.move.y` for a control named `move`. |
+| Drag | Declare a `drag` control and listen for `dragmove` to read position and velocity. |
 | Tilt | Map a signal with `axes: { x: 'roll' }`, then read `pad.axis.x`. |
 | Shake | Read `pad.shake` for shake intensity. Set `motion: true` to use shake without tilt calibration. |
 
@@ -106,6 +115,7 @@ Run `npm install` from the repository root, then choose a demo.
 | --- | --- |
 | `npm run cube` | [Cube Run](examples/cube-run/README.md), a platformer on port 3200. |
 | `npm run flyer` | [Tilt Flyer](examples/tilt-flyer/README.md), a motion-controlled flight demo on port 3000. |
+| `npm run shuffleboard` | [Shuffleboard](examples/shuffleboard/README.md), a one-puck drag demo on port 3400. |
 | `npm run dodge` | [Block Dodge](examples/block-dodge/README.md), a keyboard-first game with phone reconnect and fallback on port 3300. |
 
 Touch controls work over local HTTP. Use HTTPS for motion controls and open the HTTPS URL on your computer before scanning the QR. For public hosting, enable WebSocket upgrades and add room access controls. The built-in relay lets a new connection replace an existing connection in the same room and role.

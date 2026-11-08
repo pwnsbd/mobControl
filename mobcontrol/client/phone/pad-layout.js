@@ -51,12 +51,14 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Same controls, same key — so each game remembers its own arrangement. */
 export function layoutKey(controls, orientation) {
+  controls = controls.filter((c) => c.type !== 'drag');
   const key = STORAGE_PREFIX + controls.map((c) => `${c.id}:${c.type}`).sort().join(',');
   return orientation ? `${key}:${orientation}` : key;
 }
 
 /** Start from the control's type and the developer's hint; the player moves it. */
 export function defaultLayout(controls, orientation) {
+  controls = controls.filter((c) => c.type !== 'drag');
   const buttons = controls.filter(({ type }) => type === 'button');
   if (orientation && buttons.length <= 4 && controls.length - buttons.length <= 1
       && controls.every(({ side, x, y, size }) => side == null && x == null && y == null && size == null)) {
@@ -117,6 +119,7 @@ export function clampPosition({ x, y }, size, aspect, widthFraction = sizeFracti
 
 /** Drop anything that is not a control this game declared, and fill the gaps. */
 export function reconcile(stored, controls, orientation) {
+  controls = controls.filter((c) => c.type !== 'drag');
   const fallback = defaultLayout(controls, orientation);
   if (!stored) return fallback;
   const layout = {};
@@ -147,6 +150,7 @@ export class PadLayoutStore {
   }
 
   load(controls, orientation) {
+    controls = controls.filter((c) => c.type !== 'drag');
     if (!controls.length) return {};
     let stored = null;
     try {

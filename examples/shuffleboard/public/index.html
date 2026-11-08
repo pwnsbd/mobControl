@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shuffleboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #111; color: #f2f2f2; font: 16px system-ui, sans-serif; }
+    main { width: min(760px, 100%); margin: auto; padding: 24px; }
+    header { margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 32px; }
+    p { margin: 8px 0 0; color: #bdbdbd; line-height: 1.45; }
+    .game { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+    #lane { display: block; width: min(320px, 100%); height: auto; background: #181818;
+      border: 1px solid #555; border-radius: 16px; touch-action: none; }
+    .controls { flex: 1 1 180px; min-width: 0; }
+    button { margin: 0 6px 8px 0; padding: 9px 13px; border: 1px solid #777;
+      border-radius: 8px; background: #d8d8d8; color: #161616; font: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+    #qr { width: fit-content; max-width: 100%; margin-top: 16px; padding: 12px;
+      background: #fff; color: #111; border-radius: 10px; overflow-wrap: anywhere; }
+    #qr img, #qr canvas { max-width: 100%; border: 0; border-radius: 0; }
+    .score { color: #eee; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>Shuffleboard</h1><p>Line up the puck and push it toward the scoring end. A faster push sends it farther.</p></header>
+    <div class="game">
+      <canvas id="lane" width="320" height="620" role="img" aria-label="Shuffleboard lane with three scoring zones"></canvas>
+      <section class="controls" aria-label="Game controls">
+        <button id="play" type="button">Start</button>
+        <button id="connect" type="button">Connect phone</button>
+        <p id="status" role="status">Start a round, then push upward on the phone or drag upward on the board.</p>
+        <p class="score">Score <output id="score">—</output></p>
+        <p id="connection" role="status"></p>
+        <div id="qr" aria-label="Phone pairing QR code" hidden></div>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

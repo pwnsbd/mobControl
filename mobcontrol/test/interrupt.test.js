@@ -27,6 +27,7 @@ function rig({ usesTilt = false, orientation, landscape = true } = {}) {
     },
     set stage(s) { stages.push(s); },
     onControls: (fn) => { onControls = fn; },
+    onDrag() {},
     say() {}, status() {}, showRoom() {}, showPose() {}, showControls() {},
     hintEditing() {},
     isLandscape: landscape,
@@ -402,4 +403,41 @@ test('pinching a rotated button keeps its center and leaves space for its neighb
   winListeners.pointercancel({ ...touch(2, 190), type: 'pointercancel' });
   assert.deepEqual(pad.layout, saved[0]);
   assert.equal(saved.length, 1);
+});
+
+test('a rotated drag reports local position and velocity, then ends or cancels exactly once', async () => {
+  padWorld();
+  const { ControlPad } = await import('../client/phone/control-pad.js');
+  const surface = fakeEl();
+  surface.style.setProperty = (key, value) => { surface.style[key] = value; };
+  surface.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400 });
+  document.createElement = () => surface;
+  const pad = new ControlPad(fakeEl());
+  pad.rotated = true;
+  pad.setControls([{ id: 'lane', type: 'drag', label: 'Push' }], {});
+  const events = [];
+  pad.onDrag((event) => events.push(event));
+  const pointer = (clientX, clientY, timeStamp) => ({
+    pointerId: 1, clientX, clientY, timeStamp, preventDefault() {}
+  });
+  surface.listeners.pointerdown(pointer(150, 100, 0));
+  winListeners.pointermove(pointer(150, 120, 20));
+  winListeners.pointermove(pointer(130, 120, 25));
+  assert.deepEqual(events.map(({ phase }) => phase), ['start', 'move']);
+  assert.equal(surface.style['--drag-x'], '30%');
+  assert.equal(surface.style['--drag-y'], '35%');
+  assert.deepEqual(events[0].position, { x: 0.25, y: 0.25 });
+  assert.ok(Math.abs(events[1].velocity.x - 5) < 1e-9);
+  assert.equal(events[1].velocity.y, 0);
+  winListeners.pointerup(pointer(130, 120, 28));
+  assert.deepEqual(events.map(({ phase }) => phase), ['start', 'move', 'move', 'end']);
+  assert.ok(Math.abs(events[2].velocity.y - 20) < 1e-9);
+
+  surface.listeners.pointerdown(pointer(150, 100, 40));
+  winListeners.pointermove(pointer(150, 120, 60));
+  winListeners.pointermove(pointer(130, 120, 65));
+  pad.editing = true;
+  winListeners.pointerup(pointer(130, 120, 68));
+  assert.deepEqual(events.slice(4).map(({ phase }) => phase), ['start', 'move', 'cancel']);
+  assert.deepEqual(pad.state, { buttons: {}, sticks: {} });
 });

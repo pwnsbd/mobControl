@@ -12,6 +12,8 @@ export const MessageType = Object.freeze({
   LAYOUT: '__layout',
   /** phone -> game: one input frame */
   INPUT: 'input',
+  /** phone -> game: one touch-surface gesture sample */
+  DRAG: 'drag',
   /** server -> both: a peer arrived / left */
   PAIRED: 'paired',
   UNPAIRED: 'unpaired',
@@ -106,6 +108,25 @@ function motionVector(vector) {
 }
 
 export const calibrated = () => ({ type: MessageType.CALIBRATED });
+
+export const drag = ({ id, phase, position, velocity }) => ({
+  type: MessageType.DRAG, id, phase, position, velocity
+});
+
+/** Accept only complete gesture samples with finite coordinates. */
+export function dragSample(message) {
+  const { id, phase, position, velocity } = message;
+  if (typeof id !== 'string' || !['start', 'move', 'end', 'cancel'].includes(phase)) return null;
+  if (!finiteVector(position) || !finiteVector(velocity)) return null;
+  if (position.x < 0 || position.x > 1 || position.y < 0 || position.y > 1) return null;
+  return {
+    id, phase,
+    position: { x: position.x, y: position.y },
+    velocity: { x: velocity.x, y: velocity.y }
+  };
+}
+
+const finiteVector = (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 
 /**
  * The socket can stay open while the player is no longer looking — screen

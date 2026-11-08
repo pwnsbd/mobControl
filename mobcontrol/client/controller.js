@@ -42,6 +42,7 @@ export class PhoneController {
   #transport;
   #qr;
   #layout;
+  #activeDrags = new Map();
 
   constructor(options = {}) {
     const settings = { ...DEFAULTS, ...options };
@@ -77,7 +78,7 @@ export class PhoneController {
      * snaps, so a game reads both the same way and can swap one for the other.
      */
     this.stick = zeroed(
-      controls.filter((c) => c.type !== 'button'),
+      controls.filter((c) => c.type === 'stick' || c.type === 'dpad'),
       () => ({ x: 0, y: 0 })
     );
     this.shake = 0;
@@ -134,6 +135,7 @@ export class PhoneController {
   #onMessage(msg) {
     switch (msg.type) {
       case protocol.MessageType.PAIRED:
+        this.#cancelDrags();
         this.connected = true;
         // Re-announce, so a phone that joined after us is laid out correctly
         // whether or not the relay remembered anything.
@@ -153,6 +155,9 @@ export class PhoneController {
       case protocol.MessageType.INPUT:
         this.#onInput(msg);
         break;
+      case protocol.MessageType.DRAG:
+        this.#onDrag(msg);
+        break;
     }
   }
 
@@ -169,6 +174,29 @@ export class PhoneController {
     this.#events.emit('input', this);
   }
 
+  #onDrag(message) {
+    if (!this.connected || !this.watching) return;
+    const sample = protocol.dragSample(message);
+    if (!sample) return;
+    const { id, phase, position, velocity } = sample;
+    const active = this.#activeDrags.has(id);
+    if (phase === 'start') {
+      if (active || !this.#layout.controls.some((control) => control.type === 'drag' && control.id === id)) return;
+    } else if (!active) return;
+
+    if (phase === 'end' || phase === 'cancel') this.#activeDrags.delete(id);
+    else this.#activeDrags.set(id, { ...position });
+    this.#events.emit(`drag${phase}`, { id, position, velocity });
+  }
+
+  #cancelDrags() {
+    const active = [...this.#activeDrags];
+    this.#activeDrags.clear();
+    for (const [id, position] of active) {
+      this.#events.emit('dragcancel', { id, position, velocity: { x: 0, y: 0 } });
+    }
+  }
+
   /**
    * The phone is still connected but the player has looked away. Most games
    * should pause; what "resume" means is theirs to decide, so nothing happens
@@ -183,6 +211,7 @@ export class PhoneController {
 
   /** A player who has looked away is not holding anything down. */
   #releaseEverything() {
+    this.#cancelDrags();
     this.#updateButtons({});
     this.#updateSticks({});
     this.axis = this.#mapper.zeroed();
@@ -212,6 +241,7 @@ export class PhoneController {
   #reset() {
     const wasConnected = this.connected;
     this.connected = false;
+    this.#cancelDrags();
     this.calibrated = false;
     this.motionEnabled = false;
     this.watching = true;
@@ -236,6 +266,9 @@ function normaliseControls({ buttons = [], controls = [] }) {
               .map((b) => ({ ...b, type: 'button' })),
     ...controls.map((c) => ({ ...c, type: c.type ?? 'button' }))
   ];
+  if (all.filter(({ type }) => type === 'drag').length > 1) {
+    throw new Error('mobcontrol: only one drag surface is supported per layout');
+  }
   for (const control of all) {
     if (!control.id) throw new Error('mobcontrol: every control needs an id');
     if (!CONTROL_TYPES.includes(control.type)) {

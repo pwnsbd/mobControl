@@ -79,6 +79,11 @@ export class ControllerApp {
     this.view.onTeachCancel(() => this.#stopTeaching('armed'));
     this.view.onRecentre(() => this.#recentre());
     this.view.onControls(() => { if (!this.#releasing) this.#sendFrame({ force: true }); });
+    this.view.onDrag((event) => {
+      if (this.#stage === 'playing' && (event.phase === 'cancel' || document.visibilityState === 'visible')) {
+        this.transport.send(protocol.drag(event));
+      }
+    });
     this.view.onEditHandle(() => this.view.setEditing(true));
     this.view.onEditDone(() => this.view.setEditing(false));
     this.view.onEditReset(() => this.view.resetLayout());
@@ -105,7 +110,7 @@ export class ControllerApp {
     });
 
     this.transport.on('open', () => this.#onOpen());
-    this.transport.on('close', () => this.#onClose());
+    this.transport.on('close', (event) => this.#onClose(event));
     this.transport.on('message', (msg) => this.#onMessage(msg));
     this.view.say(SAY.connecting);
     this.transport.connect();
@@ -114,7 +119,7 @@ export class ControllerApp {
   // --- the socket comes and goes -----------------------------------------
 
   /** Release locally; the socket is gone, so there is nothing to send to. */
-  #onClose() {
+  #onClose({ replaced = false } = {}) {
     this.#latestMotion = null;
     this.#releaseControls();
     if (this.#stage !== 'interrupted') {
@@ -124,7 +129,9 @@ export class ControllerApp {
         this.view.say(SAY.interrupted);
       }
     }
-    this.view.status('Reconnecting…');
+    this.view.status(replaced
+      ? 'Another tab took over this controller. Use that tab or refresh this one.'
+      : 'Reconnecting…');
   }
 
   #onOpen() {

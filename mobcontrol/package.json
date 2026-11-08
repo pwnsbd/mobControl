@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "commonjs",
   "main": "index.js",
-  "files": ["index.js", "src/", "client/", "AGENT_README.md"],
+  "files": ["index.js", "src/", "client/", "AGENT_README.md", "docs/layouts/"],
   "scripts": {
     "test": "node --test \"test/*.test.js\""
   },

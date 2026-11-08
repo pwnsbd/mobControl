@@ -51,8 +51,13 @@ export class ReconnectingSocket {
       const parsed = parse(event.data);
       if (parsed) this.#events.emit('message', parsed);
     };
-    socket.onclose = () => {
-      this.#events.emit('close');
+    socket.onclose = (event) => {
+      if (socket !== this.#socket) return;
+      // A second tab can take over this role. Retrying would evict the new tab
+      // and let both tabs take turns disconnecting each other.
+      const replaced = event.code === 1000 && event.reason === 'replaced by a newer connection';
+      if (replaced) this.#stopped = true;
+      this.#events.emit('close', { replaced });
       if (!this.#stopped) this.#scheduleRetry();
     };
     socket.onerror = () => { /* close always follows; handle it there */ };

@@ -14,13 +14,20 @@
     font-family: ui-monospace, Menlo, monospace; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
   #hint { position: fixed; bottom: 14px; left: 0; right: 0; text-align: center;
     color: rgba(255,255,255,.55); font-size: 13px; }
-  #banner { position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
-    padding: 12px 22px; border-radius: 999px; font-size: 15px; color: #f5f0ea;
-    background: rgba(20,18,26,.88); border: 1px solid rgba(255,182,77,.35);
-    box-shadow: 0 16px 40px -20px rgba(0,0,0,.9); }
-  #banner[hidden] { display: none; }
+  #connect-phone { position: fixed; top: 14px; right: 16px; }
+  #connect-phone, #use-keyboard { border: 1px solid #777; border-radius: 8px;
+    padding: 8px 12px; background: #222; color: #eee; cursor: pointer; }
+  #recovery { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center;
+    padding: 24px; background: rgba(8,10,18,.72); color: #f5f0ea; text-align: center; }
+  #recovery[hidden] { display: none; }
+  #recovery > div { display: grid; justify-items: center; gap: 12px; padding: 24px;
+    border-radius: 22px; background: #201e2a; border: 1px solid rgba(255,182,77,.35); }
+  #recovery p { margin: 0 0 4px; }
+  #recovery button { border: 0; border-radius: 10px; padding: 11px 16px; cursor: pointer;
+    color: #20160a; background: #ffb64d; font: 650 14px ui-sans-serif,system-ui,sans-serif; }
+  #recovery button:disabled { opacity: .45; cursor: default; }
 
-  #pairing { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px;
+  #pairing { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; padding: 24px;
     background: radial-gradient(125% 85% at 50% 0%, rgba(42,33,51,.97), rgba(16,14,21,.98));
     color: #f5f0ea; text-align: center; }
   #pairing[hidden] { display: none; }
@@ -46,17 +53,22 @@
 <canvas id="c"></canvas>
 <div id="hud"></div>
 <div id="hint"></div>
-<div id="banner" hidden></div>
+<button id="connect-phone" type="button" hidden>Connect phone</button>
+<div id="recovery" hidden><div><p id="recovery-message">Phone connection paused.</p>
+  <button id="continue-keyboard" type="button">Continue with keyboard</button>
+  <button id="resume-phone" type="button">Resume with phone</button>
+  <button id="reconnect-phone" type="button">Reconnect phone</button></div></div>
 
 <div id="pairing">
   <div>
     <h1>Cube Run</h1>
-    <p id="pair-instructions">Scan with your phone. Use the stick to move and tap A to jump.</p>
+    <p id="pair-instructions">Scan with your phone. Use the stick to move and tap Jump.</p>
     <div id="qr"></div>
     <div id="code"></div>
     <p id="warning" hidden></p>
     <small id="link"></small>
     <small>or just play with &larr; &rarr; and Space</small>
+    <button id="use-keyboard" type="button">Play with keyboard</button>
   </div>
 </div>
 
@@ -73,11 +85,15 @@ const showMotion = options.get('motion') === '1';
 const movement = ['stick', 'dpad', 'tilt'].includes(requestedMovement) ? requestedMovement : 'stick';
 const combineMotion = showMotion || options.get('combine') === '1';
 const moveHint = movement === 'dpad' ? 'Use the D-pad to move' : 'Use the stick to move';
+const layout = layouts.simple({
+  movement: movement === 'tilt' ? 'stick' : movement,
+  buttons: [{ id: 'jump', label: 'Jump', haptic: true }]
+});
 const pad = new PhoneController({
-  ...layouts.simple({
-    movement: movement === 'tilt' ? 'stick' : movement,
-    buttons: [{ id: 'jump', label: 'A', haptic: true }]
-  }),
+  ...layout,
+  controls: [...layout.controls, {
+    id: 'play-pause', type: 'button', label: 'Play/Pause', shape: 'rounded-rect', x: 0.5, y: 0.14
+  }],
   axes: movement === 'tilt' ? { x: 'roll' } : {},
   motion: showMotion,
   motionWithJoystick: combineMotion,
@@ -91,7 +107,7 @@ document.getElementById('pair-instructions').textContent = movement === 'tilt'
   ? (combineMotion
     ? 'Scan with your phone, enable motion, and calibrate to use both the stick and tilt.'
     : 'Scan with your phone. Use the stick, or turn on Motion to switch to tilt steering.')
-  : `Scan with your phone. ${moveHint} and tap A to jump.`;
+  : `Scan with your phone. ${moveHint} and tap Jump.`;
 document.getElementById('code').textContent = pad.room;
 document.getElementById('link').textContent = pad.pairUrl;
 pad.mountQR(document.getElementById('qr'), 200);
@@ -108,38 +124,71 @@ if (!pad.reachability.ok) {
 // Losing the phone for a moment should not dump the player back to a QR code,
 // and coming back should not drop them mid-fall — so resuming is deliberate.
 // ---------------------------------------------------------------------------
-const banner = document.getElementById('banner');
+const recovery = document.getElementById('recovery');
+const recoveryMessage = document.getElementById('recovery-message');
+const resumePhone = document.getElementById('resume-phone');
+const reconnectPhone = document.getElementById('reconnect-phone');
+const connectPhone = document.getElementById('connect-phone');
+const phoneReady = () => pad.connected && pad.watching;
+let steeringMode = 'keyboard';
+let pairingRequested = true;
 let paused = false;
-let showPairingAt = null;
 
 function pauseWith(text) {
   paused = true;
-  banner.textContent = text;
-  banner.hidden = false;
+  keys.clear();
+  jumpBuffer = 0;
+  recoveryMessage.textContent = text;
+  recovery.hidden = false;
+  updateRecovery();
 }
-function offerResume() {
-  if (paused) banner.textContent = 'Press any key or tap A to resume';
+function updateRecovery() {
+  resumePhone.disabled = !phoneReady();
+  reconnectPhone.hidden = phoneReady();
 }
-function resume() {
+function resume(mode) {
+  steeringMode = mode;
+  pairingRequested = false;
   paused = false;
-  banner.hidden = true;
-}
-
-pad.on('pair', () => {
-  clearTimeout(showPairingAt);
+  keys.clear();
+  jumpBuffer = 0;
   pairing.hidden = true;
-  offerResume();
+  recovery.hidden = true;
+  connectPhone.hidden = mode === 'phone';
+}
+document.getElementById('continue-keyboard').addEventListener('click', () => resume('keyboard'));
+document.getElementById('use-keyboard').addEventListener('click', () => resume('keyboard'));
+resumePhone.addEventListener('click', () => { if (phoneReady()) resume('phone'); });
+reconnectPhone.addEventListener('click', () => { pairing.hidden = false; });
+connectPhone.addEventListener('click', () => {
+  if (phoneReady()) resume('phone');
+  else {
+    pairingRequested = true;
+    pairing.hidden = false;
+  }
 });
+
+function phoneReturned() {
+  if (!phoneReady()) return;
+  if (paused && steeringMode === 'phone') {
+    pairing.hidden = true;
+    recoveryMessage.textContent = 'Phone available. Resume with the phone or keyboard.';
+    updateRecovery();
+  } else if (pairingRequested) resume('phone');
+}
+pad.on('pair', phoneReturned);
+pad.on('resume', phoneReturned);
 pad.on('unpair', () => {
-  pauseWith('Phone disconnected — reconnecting…');
-  // Only fall back to the QR if it really has gone, not for a blink.
-  showPairingAt = setTimeout(() => { pairing.hidden = false; }, 4000);
+  if (steeringMode === 'phone') pauseWith('Phone disconnected.');
 });
-pad.on('suspend', () => pauseWith('Paused — phone screen is off'));
-pad.on('resume', offerResume);
+pad.on('suspend', () => {
+  if (steeringMode === 'phone') pauseWith('Phone screen is off.');
+});
 
 pad.on('press', ({ id }) => {
-  if (paused) return resume();              // the resume tap is not a jump
+  if (steeringMode !== 'phone' || !phoneReady()) return;
+  if (id === 'play-pause') return paused ? resume('phone') : pauseWith('Paused');
+  if (paused) return;
   if (id === 'jump') jumpBuffer = JUMP_BUFFER;
 });
 
@@ -149,10 +198,9 @@ pad.on('press', ({ id }) => {
 // ===========================================================================
 const keys = new Set();
 addEventListener('keydown', (e) => {
-  if (['ArrowLeft', 'ArrowRight', 'Space', 'ArrowUp', 'KeyW', 'KeyA', 'KeyD'].includes(e.code)) {
-    e.preventDefault();
-  }
-  if (paused) return resume();              // any key wakes it up, and does nothing else
+  if (!['ArrowLeft', 'ArrowRight', 'Space', 'ArrowUp', 'KeyW', 'KeyA', 'KeyD'].includes(e.code)) return;
+  e.preventDefault();
+  if (paused || steeringMode !== 'keyboard' || !pairing.hidden) return;
   if (!keys.has(e.code) && isJumpKey(e.code)) jumpBuffer = JUMP_BUFFER;
   keys.add(e.code);
 });
@@ -163,14 +211,14 @@ const isJumpKey = (code) => code === 'Space' || code === 'ArrowUp' || code === '
 function steering() {
   const left = keys.has('ArrowLeft') || keys.has('KeyA');
   const right = keys.has('ArrowRight') || keys.has('KeyD');
-  if (left !== right) return right ? 1 : -1;  // keyboard
+  if (steeringMode === 'keyboard') return Number(right) - Number(left);
   const stick = pad.stick.move?.x ?? 0;
   const tilt = pad.axis.x ?? 0;
   if (movement === 'tilt' && pad.motionEnabled) return combineMotion ? clamp(stick + tilt, -1, 1) : tilt;
   return stick;
 }
-const jumpHeld = () =>
-  pad.button.jump || keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW');
+const jumpHeld = () => steeringMode === 'phone'
+  ? pad.button.jump : keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW');
 
 // ===========================================================================
 // The level. One screen tall, scrolling right, with two gaps to fall in.
@@ -381,8 +429,8 @@ function draw() {
         ? ' | Relative motion unavailable (display angle not reported); raw motion available'
         : ' | Waiting for phone motion';
   }
-  hint.textContent = pad.connected
-    ? `${movement === 'tilt' && pad.motionEnabled ? (combineMotion ? 'Stick + tilt to move' : 'Tilt to move') : moveHint} · A to jump`
+  hint.textContent = steeringMode === 'phone'
+    ? `${movement === 'tilt' && pad.motionEnabled ? (combineMotion ? 'Stick + tilt to move' : 'Tilt to move') : moveHint} · Tap Jump`
     : 'arrow keys + space — or scan the code to use your phone';
 }
 
@@ -425,7 +473,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
-  if (!won && !paused) { time += dt; physics(dt); }
+  if (!won && !paused && pairing.hidden) { time += dt; physics(dt); }
   draw();
   requestAnimationFrame(frame);
 }

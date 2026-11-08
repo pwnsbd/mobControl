@@ -59,6 +59,7 @@ export class ControllerView {
     this.#el.motionSkip.addEventListener('click', fn);
   }
   onControls(fn) { this.#pad.onChange(fn); }
+  onDrag(fn) { this.#pad.onDrag(fn); }
   onEditDone(fn) { this.#el.editDone.addEventListener('click', fn); }
   onEditReset(fn) { this.#el.editReset.addEventListener('click', fn); }
 
@@ -146,7 +147,7 @@ export class ControllerView {
 
   /** Tell the player where to customize this controller. */
   hintEditing() {
-    if (!this.#canEdit || !this.#controls.length) return;
+    if (!this.#canEdit || !this.#controls.some(({ type }) => type !== 'drag')) return;
     this.status('Use Layout to move or resize controls');
     this.#el.editHandle.classList.add('is-new');
     setTimeout(() => this.#el.editHandle.classList.remove('is-new'), 5500);
@@ -232,7 +233,7 @@ export class ControllerView {
     this.#el.recentre.hidden = !(playing && this.#motion.enabled && this.#tiltVisible);
     this.#el.tilt.hidden = !(playing && this.#motion.enabled && this.#tiltVisible);
     this.#el.pad.hidden = !(playing && hasControls);
-    this.#el.editHandle.hidden = !(playing && hasControls && this.#canEdit);
+    this.#el.editHandle.hidden = !(playing && this.#canEdit && this.#controls.some(({ type }) => type !== 'drag'));
 
     if (!playing && this.#editing) this.setEditing(false);
     if (!playing && !teaching) {

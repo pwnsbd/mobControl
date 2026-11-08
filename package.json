@@ -12,6 +12,7 @@
     "test": "npm test --workspace mobcontrol && npm test --workspace mobcontrol-mcp",
     "flyer": "npm start --workspace tilt-flyer",
     "cube": "npm start --workspace cube-run",
-    "dodge": "npm start --workspace block-dodge"
+    "dodge": "npm start --workspace block-dodge",
+    "shuffleboard": "npm start --workspace shuffleboard"
   }
 }

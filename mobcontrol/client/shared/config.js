@@ -3,7 +3,7 @@
 import { SIGNALS, ORIENTATIONS } from './protocol.js';
 import { names as mountNames } from './mounts.js';
 
-export const CONTROL_TYPES = Object.freeze(['button', 'stick', 'dpad']);
+export const CONTROL_TYPES = Object.freeze(['button', 'stick', 'dpad', 'drag']);
 
 const sides = Object.freeze(['left', 'right']);
 const sizes = Object.freeze(['s', 'm', 'l']);
@@ -64,6 +64,14 @@ export const configurationContract = {
     axes: 'Declared names receive normalized -1..1 tilt values.',
     buttons: 'Read pad.button[id] while held, or listen for press/release events with {id}.',
     controls: 'Read pad.stick[id].x and .y from -1 to 1. D-pad directions snap.',
+    drag: {
+      events: ['dragstart', 'dragmove', 'dragend', 'dragcancel'],
+      payload: ['id', 'position', 'velocity'],
+      maxSurfaces: 1,
+      position: 'x and y from 0 to 1 within the surface. Right and down are positive.',
+      velocity: 'Controller-relative x and y in surface short-edge lengths per second. Calculated on the phone.',
+      placement: 'Fixed lower surface. Other controls can sit above it.'
+    },
     shake: 'Read pad.shake from 0 to 1. Trigger one action when it crosses a threshold.',
     motion: {
       property: 'pad.motion',
@@ -111,6 +119,7 @@ export function validateConfiguration(config) {
   if (config.buttons !== undefined && !Array.isArray(config.buttons)) issue('buttons', 'Expected an array.');
   if (config.controls !== undefined && !Array.isArray(config.controls)) issue('controls', 'Expected an array.');
   const seen = new Set();
+  let hasDrag = false;
   const checkControl = (item, path, shorthand = false) => {
     if (typeof item === 'string' && shorthand) item = { id: item };
     if (!isObject(item) || Array.isArray(item)) { issue(path, 'Expected a control object or ID string.'); return; }
@@ -120,6 +129,13 @@ export function validateConfiguration(config) {
     else seen.add(item.id);
     const type = shorthand ? 'button' : (item.type ?? 'button');
     if (!CONTROL_TYPES.includes(type)) issue(`${path}.type`, `Choose one of: ${CONTROL_TYPES.join(', ')}.`);
+    if (type === 'drag') {
+      if (hasDrag) issue(`${path}.type`, 'Use only one drag surface per layout.');
+      hasDrag = true;
+      for (const field of ['side', 'x', 'y', 'size']) {
+        if (item[field] !== undefined) issue(`${path}.${field}`, 'The drag surface has fixed placement.');
+      }
+    }
     if (item.label !== undefined && typeof item.label !== 'string') issue(`${path}.label`, 'Expected a string.');
     if (item.side !== undefined && !sides.includes(item.side)) issue(`${path}.side`, 'Choose left or right.');
     for (const axis of ['x', 'y']) if (item[axis] !== undefined && !(typeof item[axis] === 'number' && Number.isFinite(item[axis]) && item[axis] >= 0 && item[axis] <= 1)) issue(`${path}.${axis}`, 'Expected a number from 0 to 1.');

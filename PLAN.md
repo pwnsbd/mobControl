@@ -28,8 +28,8 @@ deliberate design (`pad-layout.js:30`). Baseline: 42/42 tests green at `dcc473e`
       `docs/contracts/layout-orientation.md`. Positions are fractions of a pad
       that is ~339x672 portrait and ~776x289 landscape, so one set of numbers
       cannot serve both. Templates say which they were designed for.
-- [ ] **P1.5 — the drag control type.** `controls.js` has exactly three types:
-      button, stick, dpad. A stick is a fixed thumbstick, not a drag surface.
+- [x] **P1.5 — the drag control type.** The game can declare a fixed touch
+      surface and receive the gesture's position, velocity, and lifecycle.
       Games that want no gamepad — quizzes, card and puzzle games, simple tilt
       games — want a draggable or swipeable area, usually in portrait. This is
       a new input primitive and gets the same treatment sticks got: its own

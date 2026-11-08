@@ -23,6 +23,9 @@ In a browser ES module, import `PhoneController` from `/__phone/controller.js`. 
 
 ## Declare controls and read input
 
+See the shipped controller previews for [joystick](docs/layouts/cube-run-joystick.png),
+[D-pad](docs/layouts/cube-run-dpad.png), and [motion](docs/layouts/tilt-flyer-motion.png).
+
 Use `buttons` for button shorthand (`['jump']` or `[{ id: 'jump', label: 'Jump', haptic: true }]`) and `controls` for typed controls (`{ id, type: 'button' | 'stick' | 'dpad', label?, side?, x?, y?, size?, accent?, haptic? }`). A button can also appear in `controls`. IDs must be unique across both lists. `side` is `left` or `right`; `x` and `y` are normalized 0–1 positions; sizes are `s`, `m`, `l`; accents are `yellow`, `amber`, `blue`, `red`, `green`. Player layout editing is enabled by default (`allowLayoutEdit: false` disables it).
 
 Read button levels from `pad.button[id]` or listen for `press`/`release` events carrying `{ id }`. Sticks and D-pads share the same `pad.stick[id]` shape: `x` and `y` each range from -1 to 1; a D-pad snaps to directions. `pad.on('input', pad => ...)` fires when an input frame arrives. `pad.shake` ranges from 0 to 1. Handle `pair`, `unpair`, `suspend`, and `resume` as needed; on a suspend, held controls are released. `pad.disconnect()` closes the game-side connection.
@@ -30,6 +33,30 @@ Read button levels from `pad.button[id]` or listen for `press`/`release` events 
 Presets are exported as `layouts` from the same browser module: `layouts.simple({ movement: 'none' | 'stick' | 'dpad' | 'tilt', buttons, orientation })`, `layouts.gamepad({ buttons?, ids? })`, `layouts.dualStick({ ids? })`, and `layouts.dpad({ buttons?, ids? })`. They return ordinary options to spread into the constructor. `simple` supports up to four action buttons; `gamepad` is a left D-pad plus four right buttons; `dualStick` is left move/right aim; `dpad` is a left D-pad plus two action buttons. Add other options after the spread, such as `motion`.
 
 `orientation` defaults to `landscape`. Choose `portrait` for a fixed portrait layout or `any` to follow the phone's viewport. Fixed layouts rotate in software when needed. To override a preset, set `orientation` after spreading its options.
+
+## Use a drag surface
+
+Declare one fixed touch surface with `{ id: 'lane', type: 'drag', label: 'Push' }`.
+Other controls stay available. A drag surface has its own placement and size
+and is excluded from the player's Layout editor.
+
+```js
+const pad = new PhoneController({
+  orientation: 'portrait',
+  controls: [{ id: 'lane', type: 'drag', label: 'Push' }]
+});
+
+pad.on('dragmove', ({ id, position, velocity }) => {
+  if (id === 'lane') pushPuck(position, velocity);
+});
+```
+
+`dragstart`, `dragmove`, `dragend`, and `dragcancel` all report
+`{ id, position, velocity }`. Position ranges from 0 to 1 within the surface.
+Velocity is measured on the phone in surface short-edge lengths per second.
+Right and down are positive on both. Use `dragmove` for a live push and
+`dragend` for a normal lift. On `dragcancel`, clear the gesture without
+committing an action.
 
 ## Motion, tilt, and feedback
 

@@ -1,10 +1,15 @@
 # Cube Run
 
 A one-level cube platformer, built to find out whether **mobControl** is genuinely drop-in.
-Move with the analog stick and tap **A** to jump. Hold the phone sideways with
+Move with the analog stick and tap **Jump**. Hold the phone sideways with
 its top edge to your left. The controller shows its landscape layout even with
 auto-rotate locked. Open **Layout** to drag a control or pinch it with two
 fingers to resize it.
+
+Use the rounded **Play/Pause** button at the top center of the phone layout to
+pause or resume. If the phone disconnects or its screen turns off, Cube Run
+pauses and offers **Continue with keyboard** or **Resume with phone** after the
+phone reconnects. The tap that resumes never triggers a jump.
 
 ```bash
 npm run cube       # from the project root, then http://localhost:3200
@@ -33,7 +38,7 @@ The game:
 const pad = new PhoneController({
   ...layouts.simple({
     movement: 'stick',
-    buttons: [{ id: 'jump', label: 'A' }]
+    buttons: [{ id: 'jump', label: 'Jump' }]
   })
 });
 

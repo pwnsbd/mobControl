@@ -57,6 +57,11 @@ import { PhoneController } from '/__phone/controller.js';
 // Everything about pairing, permissions and sensor maths is in the module.
 // This game only declares how it wants the phone held, then reads numbers.
 const pad = new PhoneController({
+  controls: [
+    { id: 'play-pause', type: 'button', label: 'Play/Pause', shape: 'rounded-rect', x: 0.5, y: 0.14 },
+    { id: 'boost', type: 'button', label: 'Boost', x: 0.22, y: 0.66, size: 'l', haptic: true },
+    { id: 'brake', type: 'button', label: 'Brake', x: 0.78, y: 0.66, size: 'l' }
+  ],
   mount: 'landscape-left',          // top edge = the nose, pointing left
   axes: { turn: 'yaw', climb: 'pitch', roll: 'roll' },
   deadzone: 3,                      // degrees of slop ignored
@@ -79,12 +84,20 @@ if (!pad.reachability.ok) {
 
 statusEl.textContent = `room ${pad.room} · waiting for phone`;
 let showPanelAt = null;
+let paused = false;
+pad.on('press', ({ id }) => {
+  if (id !== 'play-pause' || !pad.connected || !pad.watching) return;
+  paused = !paused;
+  last = performance.now();
+  statusEl.textContent = paused ? 'Paused · tap Play/Pause to fly' : 'Flight active';
+});
 pad.on('pair', () => {
   clearTimeout(showPanelAt);
   panel.classList.add('hidden');
-  statusEl.textContent = `room ${pad.room} · phone connected`;
+  statusEl.textContent = paused ? 'Phone connected · tap Play/Pause to fly' : `room ${pad.room} · phone connected`;
 });
 pad.on('unpair', () => {
+  paused = true;
   statusEl.textContent = `room ${pad.room} · reconnecting…`;
   // Only fall back to the QR if the phone really has gone, not for a blink.
   showPanelAt = setTimeout(() => {
@@ -92,8 +105,13 @@ pad.on('unpair', () => {
     statusEl.textContent = `room ${pad.room} · phone disconnected`;
   }, 4000);
 });
-pad.on('suspend', () => { statusEl.textContent = `room ${pad.room} · phone asleep`; });
-pad.on('resume', () => { statusEl.textContent = `room ${pad.room} · phone connected`; });
+pad.on('suspend', () => {
+  paused = true;
+  statusEl.textContent = `room ${pad.room} · phone asleep`;
+});
+pad.on('resume', () => {
+  statusEl.textContent = 'Phone awake · tap Play/Pause to fly';
+});
 
 // ---- canvas --------------------------------------------------------------
 const canvas = document.getElementById('c');
@@ -119,7 +137,8 @@ const CLIMB_ACCEL = 900;  // vertical acceleration at full deflection
 const SLIP_ACCEL = 1000;  // sideways acceleration at full deflection
 const DAMPING = 0.95;     // velocity kept per frame
 const SPEED = 620;        // cruise, world units per second
-const BOOST = 520;        // added at a full shake
+const BOOST = 520;        // added while boosting
+const AIRBRAKE = 280;     // forward speed while holding the airbrake
 const GROUND = 620;       // world y of the ground plane
 const CEILING = -520;
 
@@ -172,21 +191,26 @@ function frame(now) {
   // Read the phone exactly like a gamepad: -1..1 per axis, under our own names.
   const { turn, climb, roll } = pad.axis;      // note: `bank` below is the SMOOTHED roll
   const shake = pad.shake;
+  const flying = !paused && pad.connected && pad.watching;
+  const braking = flying && pad.button.brake;
+  const boost = flying && !braking ? Math.max(shake, pad.button.boost ? 1 : 0) : 0;
+  const speed = flying ? (braking ? AIRBRAKE : SPEED + BOOST * boost) : 0;
 
-  cam.heading += turn * TURN_RATE * Math.PI / 180 * dt;
-  ch = Math.cos(cam.heading); sh = Math.sin(cam.heading);
+  if (flying) {
+    cam.heading += turn * TURN_RATE * Math.PI / 180 * dt;
+    ch = Math.cos(cam.heading); sh = Math.sin(cam.heading);
 
-  vy = (vy - climb * CLIMB_ACCEL * dt) * DAMPING;    // nose up = climb = y decreases
-  vs = (vs + roll * SLIP_ACCEL * dt) * DAMPING;      // right side down = slip right
-  cam.y += vy * dt;
-  if (cam.y > GROUND - 70) { cam.y = GROUND - 70; vy = 0; }
-  if (cam.y < CEILING) { cam.y = CEILING; vy = 0; }
+    vy = (vy - climb * CLIMB_ACCEL * dt) * DAMPING;    // nose up = climb = y decreases
+    vs = (vs + roll * SLIP_ACCEL * dt) * DAMPING;      // right side down = slip right
+    cam.y += vy * dt;
+    if (cam.y > GROUND - 70) { cam.y = GROUND - 70; vy = 0; }
+    if (cam.y < CEILING) { cam.y = CEILING; vy = 0; }
 
-  const speed = SPEED + BOOST * shake;
-  cam.x += (sh * speed + ch * vs) * dt;
-  cam.z += (ch * speed - sh * vs) * dt;
+    cam.x += (sh * speed + ch * vs) * dt;
+    cam.z += (ch * speed - sh * vs) * dt;
 
-  bank += ((roll * 30) - bank) * Math.min(1, dt * 6);   // -1..1 -> degrees of bank
+    bank += ((roll * 30) - bank) * Math.min(1, dt * 6);   // -1..1 -> degrees of bank
+  }
 
   // --- sky --------------------------------------------------------------
   const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -230,7 +254,10 @@ function frame(now) {
   // --- clouds -----------------------------------------------------------
   for (const c of clouds) {
     let p = toCam(c.x, c.z);
-    if (p[1] < NEAR || p[1] > 2600 || Math.abs(p[0]) > 3200) { placeCloud(c, true); p = toCam(c.x, c.z); }
+    if (flying && (p[1] < NEAR || p[1] > 2600 || Math.abs(p[0]) > 3200)) {
+      placeCloud(c, true);
+      p = toCam(c.x, c.z);
+    }
     c._rx = p[0]; c._rz = p[1];
   }
   const vis = clouds.slice().sort((a, b) => b._rz - a._rz);
@@ -251,29 +278,72 @@ function frame(now) {
   }
   ctx.restore();
 
-  // --- plane glyph ------------------------------------------------------
-  ctx.save();
-  ctx.translate(cx, cy + 46);
-  ctx.rotate(bank * Math.PI / 180 * 0.55);
-  ctx.fillStyle = '#f2f5ff';
-  ctx.strokeStyle = 'rgba(10,16,34,0.65)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, -26);
-  ctx.lineTo(8, 4); ctx.lineTo(54, 16); ctx.lineTo(54, 24); ctx.lineTo(8, 20);
-  ctx.lineTo(6, 34); ctx.lineTo(20, 42); ctx.lineTo(20, 46); ctx.lineTo(0, 42);
-  ctx.lineTo(-20, 46); ctx.lineTo(-20, 42); ctx.lineTo(-6, 34); ctx.lineTo(-8, 20);
-  ctx.lineTo(-54, 24); ctx.lineTo(-54, 16); ctx.lineTo(-8, 4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-
-  drawHud(speed);
+  drawPlane(cx, cy, boost, braking);
+  drawHud(speed, boost, braking);
   requestAnimationFrame(frame);
 }
 
-function drawHud(speed) {
+function drawPlane(cx, cy, boost, braking) {
+  ctx.save();
+  ctx.translate(cx, cy + 54);
+  ctx.rotate(bank * Math.PI / 180 * 0.55);
+  ctx.strokeStyle = '#202839';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+
+  if (boost > 0.1) {
+    const exhaust = ctx.createLinearGradient(0, 38, 0, 72);
+    exhaust.addColorStop(0, '#f5e2b6');
+    exhaust.addColorStop(1, 'rgba(255,135,65,0)');
+    ctx.fillStyle = exhaust;
+    ctx.beginPath();
+    ctx.moveTo(-7, 37);
+    ctx.lineTo(7, 37);
+    ctx.lineTo(0, 43 + 29 * boost);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Swept wings and tail, behind the fuselage.
+  ctx.fillStyle = '#aab7ca';
+  ctx.beginPath();
+  ctx.moveTo(-8, -13); ctx.lineTo(-65, 17); ctx.lineTo(-65, 25); ctx.lineTo(-9, 15);
+  ctx.lineTo(9, 15); ctx.lineTo(65, 25); ctx.lineTo(65, 17); ctx.lineTo(8, -13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-7, 24); ctx.lineTo(-27, 37); ctx.lineTo(-27, 43); ctx.lineTo(-7, 39);
+  ctx.lineTo(7, 39); ctx.lineTo(27, 43); ctx.lineTo(27, 37); ctx.lineTo(7, 24);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  if (braking) {
+    ctx.fillStyle = '#e7a56c';
+    ctx.fillRect(-45, 14, 23, 5);
+    ctx.fillRect(22, 14, 23, 5);
+  }
+
+  ctx.fillStyle = '#f2f5ff';
+  ctx.beginPath();
+  ctx.moveTo(0, -41);
+  ctx.bezierCurveTo(9, -31, 13, -12, 11, 10);
+  ctx.lineTo(6, 40); ctx.lineTo(-6, 40); ctx.lineTo(-11, 10);
+  ctx.bezierCurveTo(-13, -12, -9, -31, 0, -41);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#344d66';
+  ctx.beginPath();
+  ctx.ellipse(0, -16, 6, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#71859a';
+  ctx.fillRect(-2, 8, 4, 21);
+  ctx.restore();
+}
+
+function drawHud(speed, boost, braking) {
   const hdg = ((cam.heading * 180 / Math.PI) % 360 + 360) % 360;
   ctx.font = '13px ui-monospace, Menlo, monospace';
   ctx.textAlign = 'right';
@@ -281,6 +351,10 @@ function drawHud(speed) {
   ctx.fillText('HDG ' + hdg.toFixed(0).padStart(3, '0') + '°', W - 14, 24);
   ctx.fillText('ALT ' + Math.round(GROUND - cam.y), W - 14, 42);
   ctx.fillText('SPD ' + Math.round(speed), W - 14, 60);
+  if (braking || boost > 0.1) {
+    ctx.fillStyle = '#ffd2a2';
+    ctx.fillText(braking ? 'AIRBRAKE' : 'BOOST', W - 14, 78);
+  }
 
   // compass ribbon, so a turn is readable even with nothing else in frame
   const rw = Math.min(360, W - 120), rx = (W - rw) / 2, ry = 18;

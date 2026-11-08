@@ -14,12 +14,44 @@ import { DeviceMotionSource } from '../client/phone/motion-source.js';
 import { ShakeDetector } from '../client/phone/shake-detector.js';
 import { defaultLayout } from '../client/phone/pad-layout.js';
 import { input, MessageType } from '../client/shared/protocol.js';
+import { ReconnectingSocket } from '../client/shared/transport.js';
+import { createRelay } from '../src/relay.js';
+import { RoomRegistry } from '../src/room-registry.js';
+import { EventEmitter } from 'node:events';
 
 // Independent expectations (hand-written, not read back from the code).
 const SMALL_SIZE = 's';
 const AMBER = 'amber';
 const AT_X = 0.6;
 const AT_Y = 0.5;
+
+test('a tab replaced by the relay stops retrying, while a network drop still retries', (t) => {
+  const sockets = [];
+  class FakeSocket extends EventEmitter {
+    constructor() { super(); sockets.push(this); }
+    close(code, reason) { this.onclose({ code, reason }); }
+  }
+  const original = globalThis.WebSocket;
+  globalThis.WebSocket = FakeSocket;
+  t.after(() => { globalThis.WebSocket = original; });
+  const retry = t.mock.method(globalThis, 'setTimeout', () => {});
+
+  const transport = new ReconnectingSocket(() => 'ws://test');
+  const closes = [];
+  transport.on('close', (event) => closes.push(event));
+  transport.connect();
+  const relay = createRelay({ registry: new RoomRegistry(), events: new EventEmitter() });
+  const role = { room: 'ROOM', role: 'phone' };
+  relay.accept(sockets[0], role);
+  relay.accept(new FakeSocket(), role);
+  assert.deepEqual(closes, [{ replaced: true }]);
+  assert.equal(retry.mock.callCount(), 0);
+
+  transport.connect();
+  sockets.at(-1).close(1006, '');
+  assert.deepEqual(closes.at(-1), { replaced: false });
+  assert.equal(retry.mock.callCount(), 1);
+});
 
 /** Exercise the real game controller with an in-memory phone connection. */
 function gameController(options) {
@@ -39,6 +71,7 @@ function gameController(options) {
     pad,
     sent,
     layout: sent.find((m) => m.type === MessageType.LAYOUT),
+    phoneMessage: handlers.message,
     phoneInput: (frame) => handlers.message(input(frame))
   };
 }
@@ -55,12 +88,14 @@ function phoneController(message, { motionAngle, controlState = { buttons: {}, s
   const modes = [];
   let start;
   let toggle;
+  let sendDrag;
   const noop = () => {};
   const view = new Proxy({
     showControls: (controls) => drawn.push(controls),
     say: (message) => messages.push(message),
     onStart: (handler) => { start = handler; },
     onMotionToggle: (handler) => { toggle = handler; },
+    onDrag: (handler) => { sendDrag = handler; },
     setMotionMode: (mode) => modes.push(mode),
     controlState,
     motionAngle,
@@ -87,7 +122,7 @@ function phoneController(message, { motionAngle, controlState = { buttons: {}, s
   });
   app.start();
   handlers.message(message);
-  return { drawn, sent, listeners, messages, modes, start, toggle };
+  return { drawn, sent, listeners, messages, modes, start, toggle, sendDrag };
 }
 
 const phoneReceives = (message) => phoneController(message).drawn.at(-1);
@@ -118,6 +153,50 @@ test('a rounded rectangle is an opt-in button shape on the phone', () => {
   assert.equal(validateConfiguration({
     controls: [{ id: 'steer', type: 'stick', shape: 'rounded-rect' }]
   })[0].path, 'controls[0].shape');
+});
+
+test('the game receives drag lifecycle events from the phone and cancels interrupted gestures', () => {
+  const options = { controls: [{ id: 'lane', type: 'drag' }], orientation: 'portrait' };
+  assert.deepEqual(validateConfiguration(options), []);
+  const game = gameController(options);
+  const phone = phoneController(game.layout);
+  assert.equal(phone.drawn.at(-1)[0].type, 'drag');
+  assert.deepEqual(game.pad.stick, {});
+  const events = [];
+  for (const phase of ['start', 'move', 'end', 'cancel']) {
+    game.pad.on(`drag${phase}`, (sample) => events.push({ phase, ...sample }));
+  }
+  game.phoneMessage({ type: MessageType.PAIRED });
+
+  const position = { x: 0.5, y: 0.2 };
+  const velocity = { x: 0, y: -2.5 };
+  const emit = (phase, id = 'lane') => {
+    phone.sendDrag({ id, phase, position, velocity });
+    game.phoneMessage(phone.sent.at(-1));
+  };
+  emit('move'); // A move before a start is ignored.
+  emit('start', 'other');
+  emit('start');
+  emit('move');
+  emit('end');
+  emit('start');
+  game.phoneMessage({ type: MessageType.PRESENCE, visible: false });
+  emit('end'); // Late end must not turn the cancellation into a shot.
+  game.phoneMessage({ type: MessageType.PRESENCE, visible: true });
+  emit('start');
+  game.phoneMessage({ type: MessageType.UNPAIRED });
+  assert.deepEqual(events.map(({ phase }) => phase), ['start', 'move', 'end', 'start', 'cancel', 'start', 'cancel']);
+  assert.deepEqual(events[1], { phase: 'move', id: 'lane', position, velocity });
+  assert.deepEqual(events[4].velocity, { x: 0, y: 0 });
+});
+
+test('a drag surface rejects a second surface or custom placement', () => {
+  const options = { controls: [
+    { id: 'lane', type: 'drag', x: 0.5 },
+    { id: 'other', type: 'drag' }
+  ] };
+  assert.deepEqual(validateConfiguration(options).map(({ path }) => path), ['controls[0].x', 'controls[1].type']);
+  assert.throws(() => gameController(options), /only one drag surface/);
 });
 
 test('every field a preset sets on a control survives the crossing', () => {

@@ -26,6 +26,8 @@ export class ControlPad {
   rotated = false;
   #onChange = () => {};
   #onLayoutChange = () => {};
+  #onDrag = () => {};
+  #dragPointer = null;
 
   constructor(root) {
     this.#root = root;
@@ -45,6 +47,7 @@ export class ControlPad {
 
   onChange(fn) { this.#onChange = fn; }
   onLayoutChange(fn) { this.#onLayoutChange = fn; }
+  onDrag(fn) { this.#onDrag = fn; }
 
   /** Everything a game reads, in the two shapes it understands. */
   get state() {
@@ -62,18 +65,30 @@ export class ControlPad {
   }
 
   setControls(specs, layout) {
+    this.#cancelDragInput();
     this.#specs = specs;
     this.#layout = layout;
     this.#byPointer.clear();
     this.#drag = null;
     this.#controls.clear();
 
-    const elements = specs.map((spec) => {
+    const elements = specs.filter((spec) => spec.type !== 'drag').map((spec) => {
       const control = controls.create(spec);
       this.#controls.set(spec.id, control);
       control.element.addEventListener('pointerdown', (e) => this.#down(e, control));
       return control.element;
     });
+    const dragSpec = specs.find(({ type }) => type === 'drag');
+    if (dragSpec) {
+      const dragSurface = document.createElement('div');
+      dragSurface.className = 'control--drag-surface';
+      dragSurface.textContent = dragSpec.label ?? 'Drag';
+      dragSurface.addEventListener('pointerdown', (event) => this.#startDragInput(event, dragSpec.id, dragSurface));
+      dragSurface.addEventListener('lostpointercapture', (event) => {
+        if (this.#dragPointer?.pointerId === event.pointerId) this.#cancelDragInput();
+      });
+      elements.unshift(dragSurface);
+    }
     this.#root.replaceChildren(...elements);
     this.#paint();
   }
@@ -115,6 +130,7 @@ export class ControlPad {
   }
 
   #move(event) {
+    if (this.#dragPointer?.pointerId === event.pointerId) return this.#moveDragInput(event);
     const drag = this.#drag;
     if (drag?.pinch?.pointerId === event.pointerId) {
       drag.pinch.point = pointOf(event);
@@ -129,6 +145,9 @@ export class ControlPad {
   }
 
   #release(event) {
+    if (this.#dragPointer?.pointerId === event.pointerId) {
+      return event.type === 'pointercancel' ? this.#cancelDragInput() : this.#finishDragInput(event);
+    }
     if (this.#drag?.pointerId === event.pointerId || this.#drag?.pinch?.pointerId === event.pointerId) {
       return this.#endDrag(event.type === 'pointercancel');
     }
@@ -141,6 +160,7 @@ export class ControlPad {
 
   /** Let go of everything, whatever is touching it. Safe with no controls. */
   releaseAll() {
+    this.#cancelDragInput();
     this.#byPointer.clear();
     if (this.#drag) this.#endDrag(true);
     let changed = false;
@@ -249,9 +269,77 @@ export class ControlPad {
       ? { left, top, right: left + width, width: height, height: width }
       : { left, top, width, height };
   }
+
+  #startDragInput(event, id, surface) {
+    event.preventDefault();
+    if (this.#editing || this.#dragPointer) return;
+    const box = surface.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    const position = this.#dragPosition(event, box);
+    this.#dragPointer = { id, pointerId: event.pointerId, surface, box, position, time: event.timeStamp, lastSent: -Infinity };
+    showDragPoint(surface, position);
+    surface.classList.add('is-dragging');
+    surface.setPointerCapture?.(event.pointerId);
+    this.#onDrag({ id, phase: 'start', position, velocity: { x: 0, y: 0 } });
+  }
+
+  #moveDragInput(event) {
+    const drag = this.#dragPointer;
+    const position = this.#dragPosition(event, drag.box);
+    showDragPoint(drag.surface, position);
+    const seconds = (event.timeStamp - drag.time) / 1000;
+    const width = this.rotated ? drag.box.height : drag.box.width;
+    const height = this.rotated ? drag.box.width : drag.box.height;
+    const scale = Math.min(width, height);
+    const velocity = seconds > 0 ? {
+      x: (position.x - drag.position.x) * width / scale / seconds,
+      y: (position.y - drag.position.y) * height / scale / seconds
+    } : { x: 0, y: 0 };
+    drag.position = position;
+    drag.time = event.timeStamp;
+    drag.pending = { id: drag.id, phase: 'move', position, velocity };
+    if (drag.time - drag.lastSent < 1000 / 60) return;
+    drag.lastSent = drag.time;
+    const sample = drag.pending;
+    drag.pending = null;
+    this.#onDrag(sample);
+  }
+
+  #finishDragInput(event) {
+    const drag = this.#dragPointer;
+    this.#dragPointer = null;
+    drag.surface.classList.remove('is-dragging');
+    if (drag.pending) this.#onDrag(drag.pending);
+    const position = this.#dragPosition(event, drag.box);
+    this.#onDrag({ id: drag.id, phase: 'end', position, velocity: { x: 0, y: 0 } });
+  }
+
+  #cancelDragInput() {
+    if (!this.#dragPointer) return;
+    const { id, position, surface } = this.#dragPointer;
+    this.#dragPointer = null;
+    surface.classList.remove('is-dragging');
+    this.#onDrag({ id, phase: 'cancel', position, velocity: { x: 0, y: 0 } });
+  }
+
+  #dragPosition(event, rect) {
+    const width = this.rotated ? rect.height : rect.width;
+    const height = this.rotated ? rect.width : rect.height;
+    const x = this.rotated ? event.clientY - rect.top : event.clientX - rect.left;
+    const y = this.rotated ? rect.left + rect.width - event.clientX : event.clientY - rect.top;
+    return {
+      x: Math.max(0, Math.min(1, x / width)),
+      y: Math.max(0, Math.min(1, y / height))
+    };
+  }
 }
 
 const pointOf = (event) => ({ x: event.clientX, y: event.clientY });
+
+function showDragPoint(surface, { x, y }) {
+  surface.style.setProperty('--drag-x', `${x * 100}%`);
+  surface.style.setProperty('--drag-y', `${y * 100}%`);
+}
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function controlDiameter(size, width, height) {
