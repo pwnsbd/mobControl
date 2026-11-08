@@ -8,6 +8,8 @@ Coding agents can start with the [integration guide](mobcontrol/AGENT_README.md)
 
 ## Quick start
 
+For games hosted on Cloudflare Pages or Workers, see the [Cloudflare setup guide](mobcontrol/cloudflare/README.md).
+
 Once mobControl is published, install it in a Node project. This example uses Express.
 
 ```sh

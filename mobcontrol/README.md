@@ -53,6 +53,10 @@ Create `public/index.html`:
 
 Run `node server.cjs`. Keep the computer and phone on the same Wi-Fi, open `http://<computer-LAN-IP>:<port>` on the computer, then scan the QR code with your phone. Tap **Jump**; the game page will show **Jump pressed!** Touch controls work over local HTTP. Motion controls require HTTPS.
 
+## Cloudflare hosting
+
+For games hosted on Cloudflare Pages or Workers, follow the [Cloudflare setup guide](cloudflare/README.md) to connect the game to the MobControl relay.
+
 ## Phone layouts
 
 | Cube Run · Joystick | Cube Run · D-pad | Tilt Flyer · Motion |
